@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'features/vision/vision_screen.dart';
+import 'shared/widgets/app_shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +21,7 @@ class TheOneApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
       ),
-      home: const VisionScreen(),
+      home: const AppShell(),
     );
   }
 }

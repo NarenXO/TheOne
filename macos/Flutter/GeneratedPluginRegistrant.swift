@@ -5,14 +5,18 @@
 import FlutterMacOS
 import Foundation
 
+import battery_plus
 import device_info_plus
 import flutter_tts
+import geolocator_apple
 import speech_to_text
 import sqflite_darwin
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
+  BatteryPlusMacosPlugin.register(with: registry.registrar(forPlugin: "BatteryPlusMacosPlugin"))
   DeviceInfoPlusMacosPlugin.register(with: registry.registrar(forPlugin: "DeviceInfoPlusMacosPlugin"))
   FlutterTtsPlugin.register(with: registry.registrar(forPlugin: "FlutterTtsPlugin"))
+  GeolocatorPlugin.register(with: registry.registrar(forPlugin: "GeolocatorPlugin"))
   SpeechToTextPlugin.register(with: registry.registrar(forPlugin: "SpeechToTextPlugin"))
   SqflitePlugin.register(with: registry.registrar(forPlugin: "SqflitePlugin"))
 }
