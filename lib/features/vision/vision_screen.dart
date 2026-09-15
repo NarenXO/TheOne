@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../../core/evidence/evidence.dart';
 import '../../core/evidence/evidence_bundle.dart';
@@ -10,12 +11,14 @@ import '../../core/models/confidence_state.dart';
 import '../../core/models/evidence_source.dart';
 import '../../core/models/evidence_type.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
+import '../../core/services/impl/object_detection_service_impl.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/torch_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/storage/session_storage.dart';
 import '../../shared/widgets/evidence_card.dart';
+import 'vision_pipeline.dart';
 
 class VisionScreen extends StatefulWidget {
   const VisionScreen({super.key});
@@ -37,15 +40,23 @@ class _VisionScreenState extends State<VisionScreen> {
   final _zeroAssumptionEngine = ZeroAssumptionEngine();
   final _relevanceEngine = RelevanceEngine();
   final _sessionStorage = SessionStorage();
+  final _objectService = ObjectDetectionServiceImpl();
+  late final VisionPipeline _visionPipeline;
 
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
   final TextEditingController _queryController = TextEditingController(text: "Room 204 enga irukku?");
   bool _isListening = false;
+  String _statusLine = 'Ready';
 
   @override
   void initState() {
     super.initState();
+    _visionPipeline = VisionPipeline(
+      ocrService: _ocrService,
+      objectService: _objectService,
+      torchService: _torchService,
+    );
     _initCamera();
   }
 
@@ -147,31 +158,6 @@ class _VisionScreenState extends State<VisionScreen> {
     _processVerification(bundle, _queryController.text);
   }
 
-  Future<void> _captureAndScanImage() async {
-    if (!_isCameraInitialized || _cameraController == null) return;
-
-    try {
-      final image = await _cameraController!.takePicture();
-      final inputImage = InputImage.fromFilePath(image.path);
-      final ocrResults = await _ocrService.extractText(inputImage);
-
-      if (ocrResults.isNotEmpty) {
-        final extractedText = ocrResults.map((r) => r.text).join(' ');
-        final bundle = EvidenceBundle([
-          Evidence(
-            source: EvidenceSource.camera,
-            type: EvidenceType.ocr,
-            value: extractedText,
-            confidence: 0.92,
-          ),
-        ]);
-        await _processVerification(bundle, _queryController.text);
-      }
-    } catch (e) {
-      // Handle capture/OCR errors gracefully
-    }
-  }
-
   Future<void> _startVoiceInput() async {
     setState(() => _isListening = true);
     final result = await _speechService.listen();
@@ -182,10 +168,58 @@ class _VisionScreenState extends State<VisionScreen> {
     }
   }
 
+  Future<void> _scanLiveCamera() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      setState(() => _statusLine = 'Camera not ready');
+      return;
+    }
+    try {
+      setState(() => _statusLine = 'Scanning...');
+      final file = await _cameraController!.takePicture();
+      final bytes = await file.readAsBytes();
+      final brightness = _visionPipeline.estimateBrightnessFromBytes(bytes);
+
+      await _visionPipeline.applyAutoTorch(
+        brightness: brightness,
+        cameraController: _cameraController,
+      );
+
+      final inputImage = InputImage.fromFilePath(file.path);
+      final bundle = await _visionPipeline.processInputImage(
+        inputImage,
+        estimatedBrightness: brightness,
+        cameraController: _cameraController,
+      );
+
+      // Obstacle haptic for closest obstacle
+      for (final e in bundle.items) {
+        if (e.type == EvidenceType.obstacle) {
+          final p = (e.metadata['proximity01'] as num?)?.toDouble() ?? 0;
+          if (p >= 0.4) await _hapticService.obstacleProximity(p);
+        }
+      }
+
+      final query = _queryController.text.trim().isEmpty
+          ? 'What is in front of me?'
+          : _queryController.text.trim();
+
+      await _processVerification(bundle, query);
+
+      setState(() {
+        _statusLine = _visionPipeline.isTorchAutoOn
+            ? 'Low light detected — torch ON automatically'
+            : 'Scan complete (brightness ${(brightness * 100).toStringAsFixed(0)}%)';
+      });
+    } catch (e) {
+      setState(() => _statusLine = 'Scan failed: $e');
+    }
+  }
+
   @override
   void dispose() {
     _cameraController?.dispose();
     _ocrService.dispose();
+    _objectService.dispose();
     _queryController.dispose();
     super.dispose();
   }
@@ -243,6 +277,17 @@ class _VisionScreenState extends State<VisionScreen> {
                     ),
                   ),
           ),
+          // Status Banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            color: Colors.blueGrey[100],
+            child: Text(
+              _statusLine,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              textAlign: TextAlign.center,
+            ),
+          ),
 
           // Query & Demo Controls
           Padding(
@@ -265,7 +310,7 @@ class _VisionScreenState extends State<VisionScreen> {
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
                         onPressed: _runVerifiedDemo,
                         icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-                        label: const Text("Demo: Verify 204", style: TextStyle(color: Colors.white)),
+                        label: const Text("DEMO: Verify 204", style: TextStyle(color: Colors.white)),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -274,10 +319,16 @@ class _VisionScreenState extends State<VisionScreen> {
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700]),
                         onPressed: _runConflictDemo,
                         icon: const Icon(Icons.warning_amber_outlined, color: Colors.white),
-                        label: const Text("Demo: Conflict 204/302", style: TextStyle(color: Colors.white)),
+                        label: const Text("DEMO: Conflict 204/302", style: TextStyle(color: Colors.white)),
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  "Demo buttons inject sample evidence for judges. Live scan uses real camera.",
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -285,9 +336,9 @@ class _VisionScreenState extends State<VisionScreen> {
                     Expanded(
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700]),
-                        onPressed: _captureAndScanImage,
+                        onPressed: _scanLiveCamera,
                         icon: const Icon(Icons.camera_alt, color: Colors.white),
-                        label: const Text("Scan Live Camera", style: TextStyle(color: Colors.white)),
+                        label: const Text("SCAN LIVE CAMERA", style: TextStyle(color: Colors.white)),
                       ),
                     ),
                     const SizedBox(width: 8),

@@ -1,10 +1,10 @@
 abstract class ObjectDetectionService {
-  Future<List<DetectedObject>> detect(dynamic imageInput);
+  Future<List<CustomDetectedObject>> detect(dynamic imageInput);
 }
 
-class DetectedObject {
+class CustomDetectedObject {
   final String label;
   final double confidence;
   final double proximity01;
-  DetectedObject({required this.label, required this.confidence, this.proximity01 = 0.0});
+  CustomDetectedObject({required this.label, required this.confidence, this.proximity01 = 0.0});
 }
