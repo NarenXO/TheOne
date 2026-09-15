@@ -23,12 +23,13 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
           channel: 'stable'
           cache: false
       
       - name: Get dependencies
-        run: flutter pub get
+        run: |
+          flutter pub upgrade --major-versions
+          flutter pub get
       
       - name: Build APK
         run: flutter build apk --debug -t lib/hearing_preview.dart --no-tree-shake-icons
