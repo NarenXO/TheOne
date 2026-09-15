@@ -140,14 +140,13 @@ void main() {
       expect(retried, isTrue);
     });
 
-    testWidgets('StatusBadges display Offline Ready and DEMO MODE', (tester) async {
+    testWidgets('StatusBadges display Offline Ready', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
             body: Column(
               children: [
                 OfflineBadge(),
-                DemoBadge(),
               ],
             ),
           ),
@@ -155,7 +154,6 @@ void main() {
       );
 
       expect(find.text('Offline Ready'), findsOneWidget);
-      expect(find.text('DEMO MODE'), findsOneWidget);
     });
   });
 

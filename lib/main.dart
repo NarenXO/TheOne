@@ -6,7 +6,6 @@ import 'shared/theme/app_theme.dart';
 import 'shared/services/settings_service.dart';
 import 'shared/services/emergency_contact_store.dart';
 import 'shared/services/session_service.dart';
-import 'shared/services/demo_mode_service.dart';
 import 'shared/widgets/app_shell.dart';
 import 'features/onboarding/onboarding_screen.dart';
 
@@ -37,13 +36,11 @@ class TheOneApp extends StatelessWidget {
           ChangeNotifierProvider(create: (_) => SettingsService(prefs!)),
           ChangeNotifierProvider(create: (_) => EmergencyContactStore(prefs!)),
           ChangeNotifierProvider(create: (_) => SessionService()),
-          ChangeNotifierProvider(create: (_) => DemoModeService()),
         ],
         child: const _TheOneAppContent(),
       );
     }
 
-    // If providers already exist above (e.g. in test), just build content
     return const _TheOneAppContent();
   }
 }

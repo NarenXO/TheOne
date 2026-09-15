@@ -45,17 +45,11 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = Provider.of<SettingsService>(context);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('TheOne', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           const OfflineBadge(),
-          if (settings.demoMode) ...[
-            const SizedBox(width: 8),
-            const DemoBadge(),
-          ],
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',

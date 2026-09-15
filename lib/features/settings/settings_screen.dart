@@ -160,16 +160,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
 
-          // Section: Developer Demo Mode
-          _buildSectionHeader('Developer & Presentation', Icons.science),
-          SwitchListTile(
-            title: const Text('Developer Demo Mode', style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: const Text('Displays verified sample data for demonstration purposes'),
-            value: settings.demoMode,
-            onChanged: (val) => settings.setDemoMode(val),
-          ),
-          const Divider(),
-
           // Section: About
           _buildSectionHeader('About', Icons.info_outline),
           const ListTile(

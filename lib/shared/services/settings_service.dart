@@ -9,7 +9,6 @@ class SettingsService extends ChangeNotifier {
   static const String _keySpeechRate = 'settings_speech_rate';
   static const String _keyPreferredMode = 'settings_preferred_mode';
   static const String _keyOnboardingComplete = 'settings_onboarding_complete';
-  static const String _keyDemoMode = 'settings_demo_mode';
   static const String _keyAutoSos = 'settings_auto_sos_critical';
 
   final SharedPreferences _prefs;
@@ -25,7 +24,6 @@ class SettingsService extends ChangeNotifier {
   double _speechRate = 1.0;
   String? _preferredMode;
   bool _onboardingComplete = false;
-  bool _demoMode = false;
   bool _autoSosCritical = false;
 
   double get textScale => _textScale;
@@ -35,7 +33,6 @@ class SettingsService extends ChangeNotifier {
   double get speechRate => _speechRate;
   String? get preferredMode => _preferredMode;
   bool get onboardingComplete => _onboardingComplete;
-  bool get demoMode => _demoMode;
   bool get autoSosCritical => _autoSosCritical;
 
   void _load() {
@@ -46,7 +43,6 @@ class SettingsService extends ChangeNotifier {
     _speechRate = _prefs.getDouble(_keySpeechRate) ?? 1.0;
     _preferredMode = _prefs.getString(_keyPreferredMode);
     _onboardingComplete = _prefs.getBool(_keyOnboardingComplete) ?? false;
-    _demoMode = _prefs.getBool(_keyDemoMode) ?? false;
     _autoSosCritical = _prefs.getBool(_keyAutoSos) ?? false;
   }
 
@@ -93,12 +89,6 @@ class SettingsService extends ChangeNotifier {
   Future<void> setOnboardingComplete(bool value) async {
     _onboardingComplete = value;
     await _prefs.setBool(_keyOnboardingComplete, value);
-    notifyListeners();
-  }
-
-  Future<void> setDemoMode(bool value) async {
-    _demoMode = value;
-    await _prefs.setBool(_keyDemoMode, value);
     notifyListeners();
   }
 

@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/evidence/evidence.dart';
 import '../../core/models/evidence_source.dart';
@@ -97,14 +97,15 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   void _processSpeechInput(String text, double confidence) async {
-    // Determine tone based on text keyword indicators or loud patterns
     String tone = "Neutral";
     IconData toneIcon = Icons.sentiment_neutral;
-    if (text.contains("!") || text.contains("help") || text.contains("stop") || text.contains("danger")) {
+    final lower = text.toLowerCase();
+    
+    if (lower.contains("!") || lower.contains("help") || lower.contains("stop") || lower.contains("danger") || lower.contains("fire") || lower.contains("emergency")) {
       tone = "Urgent";
       toneIcon = Icons.warning_amber_rounded;
       _triggerDangerSoundAlert("Urgent sound / shout detected: '$text'");
-    } else if (text.contains("hello") || text.contains("thanks") || text.contains("good")) {
+    } else if (lower.contains("hello") || lower.contains("thanks") || lower.contains("good") || lower.contains("vanakkam")) {
       tone = "Friendly";
       toneIcon = Icons.sentiment_satisfied_alt;
     }
@@ -122,7 +123,6 @@ class _HearingScreenState extends State<HearingScreen> {
 
     setState(() {
       _captions.add(newCaption);
-      // Alternate speaker heuristically on longer pauses
       if (_captions.length % 3 == 0) {
         _currentSpeakerIndex = _currentSpeakerIndex == 1 ? 2 : 1;
       }
@@ -130,7 +130,6 @@ class _HearingScreenState extends State<HearingScreen> {
 
     _scrollToBottom();
 
-    // Create Evidence & Save
     final evidence = Evidence(
       source: EvidenceSource.microphone,
       type: EvidenceType.speech,
@@ -160,17 +159,11 @@ class _HearingScreenState extends State<HearingScreen> {
     });
   }
 
-  // Demo shortcut for judges to simulate ambient danger sound detection
-  void _simulateDangerAlarm() {
-    _triggerDangerSoundAlert("AMBIENT DANGER DETECTED: Fire Alarm / Loud Shouting (96% Confidence)");
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("TheOne — Hearing Assist"),
-        backgroundColor: Colors.blueGrey[900],
+        title: const Text("Hearing Assist"),
         actions: [
           IconButton(
             icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
@@ -178,155 +171,136 @@ class _HearingScreenState extends State<HearingScreen> {
             tooltip: _isPaused ? "Resume Captions" : "Freeze / Pause Captions",
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline),
+            icon: const Icon(Icons.clear_all),
             onPressed: () => setState(() => _captions.clear()),
-            tooltip: "Clear Caption History",
+            tooltip: "Clear Captions",
           ),
         ],
       ),
       body: Column(
         children: [
-          // Ambient Danger Banner Alert
           if (_isAmbientDangerActive && _dangerAlertMessage != null)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(14),
               color: Colors.red[900],
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  const Icon(Icons.error, color: Colors.white, size: 32),
+                  const Icon(Icons.warning, color: Colors.white, size: 28),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       _dangerAlertMessage!,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-
-          // Control Toolbar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: Colors.grey[200],
+          Padding(
+            padding: const EdgeInsets.all(12.0),
             child: Row(
               children: [
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isListening ? Colors.red[700] : Colors.blueGrey[800],
-                  ),
-                  onPressed: _isListening ? _stopListening : _startContinuousListening,
-                  icon: Icon(_isListening ? Icons.mic_off : Icons.mic, color: Colors.white),
-                  label: Text(
-                    _isListening ? "Stop Captions" : "Start Live Captions",
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _simulateDangerAlarm,
-                  icon: const Icon(Icons.campaign, color: Colors.red),
-                  label: const Text("Demo Alarm", style: TextStyle(color: Colors.red)),
-                ),
-                const Spacer(),
-                Text(
-                  _isListening ? (_isPaused ? "PAUSED" : "LIVE") : "OFFLINE",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: _isListening ? (_isPaused ? Colors.amber[800] : Colors.green[700]) : Colors.grey,
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isListening ? Colors.red[800] : Colors.teal[800],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _isListening ? _stopListening : _startContinuousListening,
+                    icon: Icon(_isListening ? Icons.mic_off : Icons.mic),
+                    label: Text(
+                      _isListening ? "Stop Captions" : "Start Live Captions",
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-
-          // Caption Feed List
           Expanded(
             child: _captions.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24.0),
-                      child: Text(
-                        "Tap 'Start Live Captions' to stream real-time spoken captions.\nOr tap 'Demo Alarm' to simulate ambient danger sound alerts.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey, fontSize: 15),
-                      ),
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.hearing, size: 64, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        Text(
+                          _isListening
+                              ? "Listening for speech..."
+                              : "Tap 'Start Live Captions' to stream real-time spoken captions.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                        ),
+                      ],
                     ),
                   )
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     itemCount: _captions.length,
                     itemBuilder: (context, index) {
                       final item = _captions[index];
-                      final isLowConfidence = item.confidence < 0.70;
-
-                      return Card(
+                      return Container(
                         margin: const EdgeInsets.symmetric(vertical: 6),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: BorderSide(
-                            color: isLowConfidence ? Colors.amber : Colors.grey[300]!,
-                            width: isLowConfidence ? 2 : 1,
-                          ),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).cardColor,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: item.speakerColor.withValues(alpha: 0.3)),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Chip(
-                                    labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                                    backgroundColor: item.speakerColor.withValues(alpha: 0.15),
-                                    label: Text(
-                                      item.speakerLabel,
-                                      style: TextStyle(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
                                         color: item.speakerColor,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
+                                        shape: BoxShape.circle,
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Icon(item.toneIcon, size: 16, color: Colors.grey[700]),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    item.toneLabel,
-                                    style: TextStyle(color: Colors.grey[700], fontSize: 12),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    "${(item.confidence * 100).toStringAsFixed(0)}%",
-                                    style: TextStyle(
-                                      color: isLowConfidence ? Colors.amber[900] : Colors.grey[600],
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      item.speakerLabel,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: item.speakerColor,
+                                        fontSize: 13,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                item.text,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: isLowConfidence ? Colors.grey[800] : Colors.black,
+                                  ],
                                 ),
-                              ),
-                              if (isLowConfidence)
-                                const Padding(
-                                  padding: EdgeInsets.only(top: 4.0),
-                                  child: Text(
-                                    "⚠️ Low confidence transcription",
-                                    style: TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
+                                Row(
+                                  children: [
+                                    Icon(item.toneIcon, size: 16, color: Colors.grey[600]),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      item.toneLabel,
+                                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                    ),
+                                  ],
                                 ),
-                            ],
-                          ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              item.text,
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                            ),
+                          ],
                         ),
                       );
                     },
