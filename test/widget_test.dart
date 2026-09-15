@@ -1,13 +1,16 @@
-import 'package:flutter_test/flutter_test.dart';
-
+﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:theone/main.dart';
 
 void main() {
-  testWidgets('App smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const TheOneApp());
+  testWidgets('App smoke test - boots into welcome screen on fresh launch', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
 
-    // Verify that the app builds without errors
-    expect(find.byType(TheOneApp), findsOneWidget);
+    await tester.pumpWidget(TheOneApp(prefs: prefs));
+    await tester.pumpAndSettle();
+
+    expect(find.text('TheOne'), findsOneWidget);
+    expect(find.text('Get Started'), findsOneWidget);
   });
 }
