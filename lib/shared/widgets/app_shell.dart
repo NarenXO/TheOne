@@ -22,7 +22,8 @@ class _AppShellState extends State<AppShell> {
   ];
 
   Future<void> _triggerAutoSos() async {
-    final sosMsg = await _sosService.generateSosMessage();
+    final smsSent = await _sosService.sendSosSms();
+    final message = await _sosService.generateSosMessage();
     if (mounted) {
       showDialog(
         context: context,
@@ -34,7 +35,9 @@ class _AppShellState extends State<AppShell> {
               Text("Auto-SOS Alert Triggered"),
             ],
           ),
-          content: Text(sosMsg ?? "Emergency Auto-SOS active."),
+          content: Text(smsSent
+              ? "SOS SMS ready — confirm send in your Messages app"
+              : message),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
