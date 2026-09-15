@@ -200,6 +200,25 @@ class _HearingScreenState extends State<HearingScreen> {
     });
   }
 
+  Widget _buildHapticChip(String label, String phrase) {
+    return ActionChip(
+      avatar: const Icon(Icons.vibration, size: 16, color: AppColors.primary),
+      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+      backgroundColor: const Color(0xFFE8EEF7),
+      onPressed: () async {
+        await _hapticService.vibratePhrase(phrase);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Vibrating: '$label' pattern"),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -307,6 +326,48 @@ class _HearingScreenState extends State<HearingScreen> {
                       fontSize: 12,
                     ),
                   ),
+                ),
+              ],
+            ),
+          ),
+          // Haptic Vibration Vocabulary
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.vibration, color: AppColors.primary, size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      "HAPTIC VIBRATION VOCABULARY",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildHapticChip("YES", "yes"),
+                    _buildHapticChip("NO", "no"),
+                    _buildHapticChip("NAME CALLED", "name"),
+                    _buildHapticChip("THANK YOU", "thank"),
+                    _buildHapticChip("EXCUSE ME", "excuse"),
+                    _buildHapticChip("DANGER", "danger"),
+                  ],
                 ),
               ],
             ),
