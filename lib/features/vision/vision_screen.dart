@@ -2,6 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../core/evidence/evidence.dart';
 import '../../core/evidence/evidence_bundle.dart';
 import '../../core/evidence/relevance_engine.dart';
@@ -31,6 +32,7 @@ class _VisionScreenState extends State<VisionScreen> {
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
   bool _isTorchOn = false;
+  String _cameraErrorMsg = "";
 
   final _ocrService = OcrServiceImpl();
   final _ttsService = TtsServiceImpl();
@@ -61,6 +63,21 @@ class _VisionScreenState extends State<VisionScreen> {
   }
 
   Future<void> _initCamera() async {
+    setState(() {
+      _cameraErrorMsg = "Requesting permissions...";
+    });
+
+    final camStatus = await Permission.camera.request();
+    await Permission.microphone.request();
+
+    if (!camStatus.isGranted) {
+      setState(() {
+        _isCameraInitialized = false;
+        _cameraErrorMsg = "Camera permission denied. Please grant in phone settings.";
+      });
+      return;
+    }
+
     try {
       final cameras = await availableCameras();
       if (cameras.isNotEmpty) {
@@ -68,12 +85,28 @@ class _VisionScreenState extends State<VisionScreen> {
           cameras.first,
           ResolutionPreset.medium,
           enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.jpeg,
         );
         await _cameraController!.initialize();
-        if (mounted) setState(() => _isCameraInitialized = true);
+        if (mounted) {
+          setState(() {
+            _isCameraInitialized = true;
+            _cameraErrorMsg = "";
+          });
+        }
+      } else {
+        setState(() {
+          _isCameraInitialized = false;
+          _cameraErrorMsg = "No camera hardware detected on device.";
+        });
       }
-    } catch (_) {
-      // Graceful fallback for emulator or systems without camera hardware
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isCameraInitialized = false;
+          _cameraErrorMsg = "Camera init error: $e";
+        });
+      }
     }
   }
 
@@ -263,16 +296,25 @@ class _VisionScreenState extends State<VisionScreen> {
             color: Colors.black,
             child: _isCameraInitialized && _cameraController != null
                 ? CameraPreview(_cameraController!)
-                : const Center(
+                : Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.camera_alt, color: Colors.grey, size: 48),
-                        SizedBox(height: 8),
+                        const Icon(Icons.camera_alt, color: Colors.grey, size: 48),
+                        const SizedBox(height: 8),
                         Text(
-                          "Camera Active / Standby Mode",
-                          style: TextStyle(color: Colors.white70),
+                          _cameraErrorMsg.isEmpty ? "Camera Active / Standby Mode" : _cameraErrorMsg,
+                          style: const TextStyle(color: Colors.white70),
+                          textAlign: TextAlign.center,
                         ),
+                        if (_cameraErrorMsg.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: _initCamera,
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700]),
+                            child: const Text("ENABLE PERMISSIONS / RETRY CAMERA", style: TextStyle(color: Colors.white)),
+                          ),
+                        ],
                       ],
                     ),
                   ),

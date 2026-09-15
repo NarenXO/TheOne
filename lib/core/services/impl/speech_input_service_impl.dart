@@ -3,13 +3,16 @@ import '../speech_input_service.dart';
 
 class SpeechInputServiceImpl implements SpeechInputService {
   final stt.SpeechToText _speech = stt.SpeechToText();
-  bool _isAvailable = false;
+  bool _isInitialized = false;
 
   Future<bool> init() async {
-    if (!_isAvailable) {
-      _isAvailable = await _speech.initialize();
+    if (!_isInitialized) {
+      _isInitialized = await _speech.initialize(
+        onError: (val) {},
+        onStatus: (val) {},
+      );
     }
-    return _isAvailable;
+    return _isInitialized;
   }
 
   @override
@@ -20,18 +23,29 @@ class SpeechInputServiceImpl implements SpeechInputService {
     }
 
     String recognizedText = "";
-    double speechConfidence = 0.0;
+    double speechConfidence = 0.85;
 
     await _speech.listen(
       onResult: (result) {
         recognizedText = result.recognizedWords;
-        speechConfidence = result.confidence > 0 ? result.confidence : 0.85;
+        if (result.confidence > 0) {
+          speechConfidence = result.confidence;
+        }
       },
+      listenOptions: stt.SpeechListenOptions(
+        listenFor: const Duration(seconds: 6),
+        pauseFor: const Duration(seconds: 3),
+        partialResults: true,
+        localeId: "en_IN",
+      ),
     );
 
-    // Give a short window for speech capture
-    await Future.delayed(const Duration(seconds: 4));
-    await _speech.stop();
+    // Wait for listening to complete active speech
+    int checks = 0;
+    while (_speech.isListening && checks < 30) {
+      await Future.delayed(const Duration(milliseconds: 200));
+      checks++;
+    }
 
     return SpeechResult(
       text: recognizedText,

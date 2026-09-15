@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'shared/widgets/app_shell.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Request CAMERA, MICROPHONE, and LOCATION permissions at app startup
+  await [
+    Permission.camera,
+    Permission.microphone,
+    Permission.location,
+  ].request();
+  
   runApp(const TheOneApp());
 }
 
