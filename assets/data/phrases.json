@@ -1,0 +1,114 @@
+[
+  {
+    "id": "em_1",
+    "category": "emergency",
+    "text_en": "I need help immediately.",
+    "text_ta": "எனக்கு உடனே உதவி தேவை.",
+    "keywords": ["help", "emergency", "urgent", "udhavi", "danger"]
+  },
+  {
+    "id": "em_2",
+    "category": "emergency",
+    "text_en": "Please call an ambulance.",
+    "text_ta": "தயவுசெய்து ஆம்புலன்ஸை அழைக்கவும்.",
+    "keywords": ["ambulance", "hospital", "doctor", "maruthuvamanai"]
+  },
+  {
+    "id": "em_3",
+    "category": "emergency",
+    "text_en": "Where is the nearest hospital?",
+    "text_ta": "அருகிலுள்ள மருத்துவமனை எங்கே?",
+    "keywords": ["hospital", "near", "location", "maruthuvamanai"]
+  },
+  {
+    "id": "em_4",
+    "category": "emergency",
+    "text_en": "Please stay with me.",
+    "text_ta": "தயவுசெய்து என்னுடன் இருங்கள்.",
+    "keywords": ["stay", "wait", "koode", "irunga"]
+  },
+  {
+    "id": "fd_1",
+    "category": "food",
+    "text_en": "I would like a medium chai, please.",
+    "text_ta": "எனக்கு ஒரு மீடியம் சாய் வேண்டும்.",
+    "keywords": ["chai", "tea", "medium", "drink", "saapadu"]
+  },
+  {
+    "id": "fd_2",
+    "category": "food",
+    "text_en": "I would like a coffee, please.",
+    "text_ta": "எனக்கு ஒரு காபி வேண்டும்.",
+    "keywords": ["coffee", "kaapi", "hot", "drink"]
+  },
+  {
+    "id": "fd_3",
+    "category": "food",
+    "text_en": "How much does this cost?",
+    "text_ta": "இதன் விலை என்ன?",
+    "keywords": ["price", "cost", "vilai", "evvalavu", "how much"]
+  },
+  {
+    "id": "fd_4",
+    "category": "food",
+    "text_en": "Can I have drinking water?",
+    "text_ta": "குடிநீர் கிடைக்குமா?",
+    "keywords": ["water", "thanni", "drink"]
+  },
+  {
+    "id": "gr_1",
+    "category": "greetings",
+    "text_en": "Hello, good morning.",
+    "text_ta": "வணக்கம், காலை வணக்கம்.",
+    "keywords": ["hello", "vanakkam", "morning", "hi"]
+  },
+  {
+    "id": "gr_2",
+    "category": "greetings",
+    "text_en": "Thank you very much.",
+    "text_ta": "மிக்க நன்றி.",
+    "keywords": ["thank", "thanks", "nandri"]
+  },
+  {
+    "id": "gr_3",
+    "category": "greetings",
+    "text_en": "Have a great day.",
+    "text_ta": "இனிய நாளாக அமையட்டும்.",
+    "keywords": ["day", "bye", "goodbye"]
+  },
+  {
+    "id": "so_1",
+    "category": "social",
+    "text_en": "I communicate using this app. Please speak to me.",
+    "text_ta": "நான் இந்த செயலி மூலம் பேசுகிறேன். என்னிடம் பேசுங்கள்.",
+    "keywords": ["communicate", "app", "speak", "pesunga"]
+  },
+  {
+    "id": "so_2",
+    "category": "social",
+    "text_en": "Could you please repeat that?",
+    "text_ta": "மீண்டும் சொல்ல முடியுமா?",
+    "keywords": ["repeat", "again", "marubadiyum", "puriyala"]
+  },
+  {
+    "id": "so_3",
+    "category": "social",
+    "text_en": "Please wait a moment.",
+    "text_ta": "கொஞ்சம் பொறுங்கள்.",
+    "keywords": ["wait", "moment", "porunga", "irunga"]
+  },
+  {
+    "id": "so_4",
+    "category": "social",
+    "text_en": "Yes, I agree.",
+    "text_ta": "ஆம், நான் ஒப்புக்கொள்கிறேன்.",
+    "keywords": ["yes", "aama", "agree", "ok"]
+  },
+  {
+    "id": "so_5",
+    "category": "social",
+    "text_en": "No, thank you.",
+    "text_ta": "இல்லை, நன்றி.",
+    "keywords": ["no", "illa", "not"]
+  }
+]
