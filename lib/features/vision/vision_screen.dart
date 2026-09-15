@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../../core/evidence/evidence.dart';
 import '../../core/evidence/evidence_bundle.dart';
 import '../../core/evidence/relevance_engine.dart';
@@ -10,6 +11,7 @@ import '../../core/models/evidence_source.dart';
 import '../../core/models/evidence_type.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
+import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/torch_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/storage/session_storage.dart';
@@ -31,6 +33,7 @@ class _VisionScreenState extends State<VisionScreen> {
   final _ttsService = TtsServiceImpl();
   final _hapticService = HapticServiceImpl();
   final _torchService = TorchServiceImpl();
+  final _speechService = SpeechInputServiceImpl();
   final _zeroAssumptionEngine = ZeroAssumptionEngine();
   final _relevanceEngine = RelevanceEngine();
   final _sessionStorage = SessionStorage();
@@ -38,6 +41,7 @@ class _VisionScreenState extends State<VisionScreen> {
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
   final TextEditingController _queryController = TextEditingController(text: "Room 204 enga irukku?");
+  bool _isListening = false;
 
   @override
   void initState() {
@@ -143,6 +147,41 @@ class _VisionScreenState extends State<VisionScreen> {
     _processVerification(bundle, _queryController.text);
   }
 
+  Future<void> _captureAndScanImage() async {
+    if (!_isCameraInitialized || _cameraController == null) return;
+
+    try {
+      final image = await _cameraController!.takePicture();
+      final inputImage = InputImage.fromFilePath(image.path);
+      final ocrResults = await _ocrService.extractText(inputImage);
+
+      if (ocrResults.isNotEmpty) {
+        final extractedText = ocrResults.map((r) => r.text).join(' ');
+        final bundle = EvidenceBundle([
+          Evidence(
+            source: EvidenceSource.camera,
+            type: EvidenceType.ocr,
+            value: extractedText,
+            confidence: 0.92,
+          ),
+        ]);
+        await _processVerification(bundle, _queryController.text);
+      }
+    } catch (e) {
+      // Handle capture/OCR errors gracefully
+    }
+  }
+
+  Future<void> _startVoiceInput() async {
+    setState(() => _isListening = true);
+    final result = await _speechService.listen();
+    setState(() => _isListening = false);
+
+    if (result.text.isNotEmpty) {
+      _queryController.text = result.text;
+    }
+  }
+
   @override
   void dispose() {
     _cameraController?.dispose();
@@ -236,6 +275,28 @@ class _VisionScreenState extends State<VisionScreen> {
                         onPressed: _runConflictDemo,
                         icon: const Icon(Icons.warning_amber_outlined, color: Colors.white),
                         label: const Text("Demo: Conflict 204/302", style: TextStyle(color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700]),
+                        onPressed: _captureAndScanImage,
+                        icon: const Icon(Icons.camera_alt, color: Colors.white),
+                        label: const Text("Scan Live Camera", style: TextStyle(color: Colors.white)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: _isListening ? Colors.orange[700] : Colors.purple[700]),
+                        onPressed: _isListening ? null : _startVoiceInput,
+                        icon: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white),
+                        label: Text(_isListening ? "Listening..." : "Voice Input", style: const TextStyle(color: Colors.white)),
                       ),
                     ),
                   ],
