@@ -1,0 +1,128 @@
+[
+  {
+    "id": "sign_hello",
+    "name_en": "Hello",
+    "name_ta": "வணக்கம்",
+    "category": "greetings",
+    "keywords": ["hello", "hi", "greet", "vanakkam"],
+    "video_asset": "assets/signs/hello.mp4",
+    "description": "Open hand waving side to side near temple."
+  },
+  {
+    "id": "sign_thankyou",
+    "name_en": "Thank you",
+    "name_ta": "நன்றி",
+    "category": "greetings",
+    "keywords": ["thank", "thanks", "nandri"],
+    "video_asset": "assets/signs/thankyou.mp4",
+    "description": "Flat palm touches chin then extends forward towards listener."
+  },
+  {
+    "id": "sign_help",
+    "name_en": "Help",
+    "name_ta": "உதவி",
+    "category": "emergency",
+    "keywords": ["help", "assist", "udhavi", "emergency"],
+    "video_asset": "assets/signs/help.mp4",
+    "description": "Closed fist with thumb up resting on flat opposite palm, raised slightly."
+  },
+  {
+    "id": "sign_water",
+    "name_en": "Water",
+    "name_ta": "தண்ணீர்",
+    "category": "food",
+    "keywords": ["water", "thanni", "drink"],
+    "video_asset": "assets/signs/water.mp4",
+    "description": "W-handshape index, middle, ring finger tapping lower lip."
+  },
+  {
+    "id": "sign_food",
+    "name_en": "Food",
+    "name_ta": "உணவு",
+    "category": "food",
+    "keywords": ["food", "eat", "saapadu", "hungry"],
+    "video_asset": "assets/signs/food.mp4",
+    "description": "Fingers pinched touching lips twice."
+  },
+  {
+    "id": "sign_where",
+    "name_en": "Where",
+    "name_ta": "எங்கே",
+    "category": "questions",
+    "keywords": ["where", "enga", "location"],
+    "video_asset": "assets/signs/where.mp4",
+    "description": "Both palms facing up moving gently side to side with furrowed brow."
+  },
+  {
+    "id": "sign_yes",
+    "name_en": "Yes",
+    "name_ta": "ஆம்",
+    "category": "daily_life",
+    "keywords": ["yes", "aama", "agree"],
+    "video_asset": "assets/signs/yes.mp4",
+    "description": "Fist nodding up and down like a nodding head."
+  },
+  {
+    "id": "sign_no",
+    "name_en": "No",
+    "name_ta": "இல்லை",
+    "category": "daily_life",
+    "keywords": ["no", "illa", "refuse"],
+    "video_asset": "assets/signs/no.mp4",
+    "description": "Index and middle fingers snapping down to touch thumb."
+  },
+  {
+    "id": "sign_hospital",
+    "name_en": "Hospital",
+    "name_ta": "மருத்துவமனை",
+    "category": "emergency",
+    "keywords": ["hospital", "doctor", "maruthuvamanai"],
+    "video_asset": "assets/signs/hospital.mp4",
+    "description": "Index finger tracing a cross shape on opposite upper arm."
+  },
+  {
+    "id": "sign_one",
+    "name_en": "One",
+    "name_ta": "ஒன்று",
+    "category": "numbers",
+    "keywords": ["one", "1", "ondru"],
+    "video_asset": "assets/signs/one.mp4",
+    "description": "Index finger raised pointing upwards."
+  },
+  {
+    "id": "sign_two",
+    "name_en": "Two",
+    "name_ta": "இரண்டு",
+    "category": "numbers",
+    "keywords": ["two", "2", "irandu"],
+    "video_asset": "assets/signs/two.mp4",
+    "description": "Index and middle fingers raised in V shape."
+  },
+  {
+    "id": "sign_left",
+    "name_en": "Left",
+    "name_ta": "இடது",
+    "category": "directions",
+    "keywords": ["left", "idathu", "direction"],
+    "video_asset": "assets/signs/left.mp4",
+    "description": "L-handshape moving towards the left."
+  },
+  {
+    "id": "sign_right",
+    "name_en": "Right",
+    "name_ta": "வலது",
+    "category": "directions",
+    "keywords": ["right", "valathu", "direction"],
+    "video_asset": "assets/signs/right.mp4",
+    "description": "R-handshape moving towards the right."
+  },
+  {
+    "id": "sign_doctor",
+    "name_en": "Doctor",
+    "name_ta": "மருத்துவர்",
+    "category": "people",
+    "keywords": ["doctor", "maruthuvar", "medical"],
+    "video_asset": "assets/signs/doctor.mp4",
+    "description": "Fingertips of one hand tapping inside wrist of opposite arm like checking pulse."
+  }
+]
