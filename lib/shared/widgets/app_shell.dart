@@ -1,14 +1,9 @@
-﻿import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/material.dart';
+import '../../core/safety/sos_service.dart';
 import '../../features/vision/vision_screen.dart';
 import '../../features/hearing/hearing_screen.dart';
 import '../../features/communication/communication_screen.dart';
-import '../../features/settings/settings_screen.dart';
-import '../../features/safety/sos_screen.dart';
-import '../services/settings_service.dart';
-import 'sensor_indicator.dart';
-import 'status_badges.dart';
-import 'safety_boundary.dart';
+import '../theme/app_theme.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -19,98 +14,67 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
+  final SosService _sosService = SosService();
 
-  final List<Widget> _screens = [
-    SafetyBoundary.wrap(const VisionScreen(), 'Vision Assist'),
-    SafetyBoundary.wrap(const HearingScreen(), 'Hearing Assist'),
-    SafetyBoundary.wrap(const CommunicationScreen(), 'Communication Assist'),
+  final List<Widget> _screens = const [
+    VisionScreen(),
+    HearingScreen(),
+    CommunicationScreen(),
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final settings = Provider.of<SettingsService>(context, listen: false);
-      if (settings.preferredMode != null) {
-        if (settings.preferredMode == 'Vision Assist') {
-          setState(() => _currentIndex = 0);
-        } else if (settings.preferredMode == 'Hearing Assist') {
-          setState(() => _currentIndex = 1);
-        } else if (settings.preferredMode == 'Communication Assist') {
-          setState(() => _currentIndex = 2);
-        }
-      }
-    });
+  Future<void> _triggerAutoSos() async {
+    final sent = await _sosService.sendSosSms();
+    final msg = await _sosService.generateSosMessage();
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'AUTO-SOS',
+          style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.danger),
+        ),
+        content: Text(
+          sent
+              ? 'SMS composer opened with emergency message.\n\n$msg'
+              : 'Could not open SMS app.\n\n$msg',
+          style: const TextStyle(color: AppColors.textPrimary, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('TheOne', style: TextStyle(fontWeight: FontWeight.bold)),
-        actions: [
-          const OfflineBadge(),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const SettingsScreen()),
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-            child: SensorIndicator(
-              isCameraActive: _currentIndex == 0,
-              isMicActive: _currentIndex == 1,
-            ),
-          ),
-          Expanded(
-            child: IndexedStack(
-              index: _currentIndex,
-              children: _screens,
-            ),
-          ),
-        ],
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-        unselectedItemColor: Colors.grey[600],
-        selectedFontSize: 14,
-        unselectedFontSize: 12,
+        onTap: (i) => setState(() => _currentIndex = i),
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.remove_red_eye),
-            label: 'Vision Assist',
+            icon: Icon(Icons.visibility),
+            label: 'Vision',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.hearing),
-            label: 'Hearing Assist',
+            label: 'Hearing',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.record_voice_over),
-            label: 'Communication Assist',
+            label: 'Talk',
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.red[900],
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const SosScreen()),
-        ),
-        icon: const Icon(Icons.emergency, color: Colors.white),
-        label: const Text(
-          "SOS",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+        onPressed: _triggerAutoSos,
+        icon: const Icon(Icons.sos),
+        label: const Text('AUTO-SOS', style: TextStyle(fontWeight: FontWeight.w800)),
       ),
     );
   }

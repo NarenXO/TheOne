@@ -1,9 +1,11 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
-import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
+import '../../core/utils/app_logger.dart';
+import '../../shared/theme/app_theme.dart';
 
 class CommunicationScreen extends StatefulWidget {
   const CommunicationScreen({super.key});
@@ -16,7 +18,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TtsServiceImpl _ttsService = TtsServiceImpl();
-  final SpeechInputServiceImpl _speechService = SpeechInputServiceImpl();
   final OcrServiceImpl _ocrService = OcrServiceImpl();
 
   CameraController? _cameraController;
@@ -24,10 +25,7 @@ class _CommunicationScreenState extends State<CommunicationScreen>
 
   final TextEditingController _customPhraseController = TextEditingController();
   final TextEditingController _intentInputController = TextEditingController();
-  final TextEditingController _signSearchController = TextEditingController();
 
-  String _lastOtherPersonReply = "";
-  bool _isListeningToReply = false;
   String _reformattedSentence = "";
 
   // Pre-loaded contextual phrases
@@ -54,36 +52,74 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   final List<String> _customPhrases = [];
   List<Map<String, String>> _cameraSuggestedPhrases = [];
 
-  // Sign Language Dictionary Items
-  final List<Map<String, String>> _signDictionary = [
-    {"sign": "Thank You", "category": "Basic", "description": "Flat hand touches chin, then moves forward towards person."},
-    {"sign": "Hello / Wave", "category": "Basic", "description": "Open hand raised near temple, wave outwards gently."},
-    {"sign": "Help", "category": "Emergency", "description": "Closed fist with thumb up placed on flat palm of other hand."},
-    {"sign": "Please", "category": "Basic", "description": "Flat hand rubbed in circular motion over chest."},
-    {"sign": "Water", "category": "Food", "description": "'W' hand shape tapped against chin twice."},
-    {"sign": "Emergency", "category": "Emergency", "description": "Hand shaped as 'E' shaken gently side to side."},
-  ];
-
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _initCamera();
   }
 
   Future<void> _initCamera() async {
+    if (!mounted) return;
+
+    final camStatus = await Permission.camera.request();
+
+    if (!camStatus.isGranted) {
+      if (mounted) {
+        setState(() => _isCameraInitialized = false);
+      }
+      return;
+    }
+
     try {
+      if (_cameraController != null) {
+        await _cameraController!.dispose();
+        _cameraController = null;
+      }
+
       final cameras = await availableCameras();
-      if (cameras.isNotEmpty) {
+      if (cameras.isEmpty) {
+        if (mounted) {
+          setState(() => _isCameraInitialized = false);
+        }
+        return;
+      }
+
+      final firstCam = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      _cameraController = CameraController(
+        firstCam,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+
+      try {
+        await _cameraController!.initialize();
+      } catch (_) {
+        // Fallback to low resolution if medium fails
         _cameraController = CameraController(
-          cameras.first,
-          ResolutionPreset.medium,
+          firstCam,
+          ResolutionPreset.low,
           enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.jpeg,
         );
         await _cameraController!.initialize();
-        if (mounted) setState(() => _isCameraInitialized = true);
       }
-    } catch (_) {}
+
+      if (mounted) {
+        setState(() => _isCameraInitialized = true);
+        AppLogger.i('COMMUNICATION', 'Camera successfully initialized (${firstCam.name})');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isCameraInitialized = false);
+        AppLogger.e('COMMUNICATION', 'Camera init error: $e');
+      }
+    }
   }
 
   @override
@@ -93,11 +129,11 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     _ocrService.dispose();
     _customPhraseController.dispose();
     _intentInputController.dispose();
-    _signSearchController.dispose();
     super.dispose();
   }
 
   void _speakPhrase(String text) async {
+    AppLogger.i('COMMUNICATION', 'Speaking quick phrase: "$text"');
     await _ttsService.speak(text);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -146,49 +182,64 @@ class _CommunicationScreenState extends State<CommunicationScreen>
 
   // Code-Mixed Intent-to-Speech Transformer
   void _reformatIntentToSpeech() {
-    final input = _intentInputController.text.trim().toLowerCase();
+    final input = _intentInputController.text.trim();
     if (input.isEmpty) return;
 
-    String cleanSentence = "";
-    if (input.contains("registration") || input.contains("enga") || input.contains("kekkanum")) {
-      cleanSentence = "Excuse me, could you please tell me where the registration desk is located?";
-    } else if (input.contains("chai") || input.contains("venum") || input.contains("tea")) {
-      cleanSentence = "Excuse me, I would like to order a tea, please.";
-    } else if (input.contains("toilet") || input.contains("restroom")) {
-      cleanSentence = "Could you please show me where the nearest restroom is?";
+    final lower = input.toLowerCase();
+    String out = "";
+
+    if (lower.contains("registration") || lower.contains("rega") || lower.contains("pativu") || lower.contains("counter")) {
+      out = "Excuse me, could you please tell me where the registration desk is located?";
+    } else if (lower.contains("toilet") || lower.contains("restroom") || lower.contains("washroom") || lower.contains("kazi") || lower.contains("kuzhi") || lower.contains("bathroom")) {
+      out = "Excuse me, could you please guide me to the nearest restroom?";
+    } else if (lower.contains("chai") || lower.contains("tea") || lower.contains("coffee") || lower.contains("kaapi") || lower.contains("drink")) {
+      out = "I would like to order a warm beverage, please.";
+    } else if (lower.contains("water") || lower.contains("thanni") || lower.contains("tanni")) {
+      out = "Could I please get a bottle of drinking water?";
+    } else if (lower.contains("food") || lower.contains("sapadu") || lower.contains("saapadu") || lower.contains("menu") || lower.contains("hungry")) {
+      out = "Excuse me, could you please show me the food menu?";
+    } else if (lower.contains("bill") || lower.contains("check") || lower.contains("evlo") || lower.contains("price") || lower.contains("cost")) {
+      out = "Could you please bring me the total bill for this?";
+    } else if (lower.contains("help") || lower.contains("udavi") || lower.contains("emergency")) {
+      out = "I need immediate assistance, please help me.";
+    } else if (lower.contains("room") || RegExp(r'\d{2,4}').hasMatch(lower)) {
+      final match = RegExp(r'\d{2,4}').firstMatch(lower);
+      final roomNum = match != null ? "Room ${match.group(0)}" : "the room";
+      out = "Excuse me, could you please guide me to $roomNum?";
+    } else if (lower.contains("exit") || lower.contains("veliya") || lower.contains("way out")) {
+      out = "Excuse me, could you please show me where the exit is?";
+    } else if (lower.contains("name") || lower.contains("peru") || lower.contains("yaaru")) {
+      out = "Hello! May I please ask what your name is?";
+    } else if (lower.contains("time") || lower.contains("mani")) {
+      out = "Excuse me, could you please tell me what time it is?";
+    } else if (lower.contains("bus") || lower.contains("train") || lower.contains("auto") || lower.contains("cab") || lower.contains("taxi")) {
+      out = "Excuse me, where can I find transportation from here?";
+    } else if (lower.contains("thanks") || lower.contains("thank you") || lower.contains("nandri")) {
+      out = "Thank you so much for your kind help!";
+    } else if (lower.contains("hello") || lower.contains("hi ") || lower == "hi" || lower.contains("vanakkam")) {
+      out = "Hello! I hope you are having a good day.";
     } else {
-      cleanSentence = "Excuse me, $input";
+      // Natural transformer fallback (capitalizes first letter, adds polite request prefix)
+      final capitalized = input[0].toUpperCase() + input.substring(1);
+      out = "Could you please help me with this: $capitalized?";
     }
 
-    setState(() => _reformattedSentence = cleanSentence);
-  }
-
-  // Capture other person's spoken response
-  Future<void> _listenToReply() async {
-    setState(() => _isListeningToReply = true);
-    final result = await _speechService.listen();
-    setState(() {
-      _lastOtherPersonReply = result.text.isNotEmpty ? result.text : "No speech detected.";
-      _isListeningToReply = false;
-    });
+    setState(() => _reformattedSentence = out);
+    AppLogger.i('COMMUNICATION', 'Intent transformed: "$input" -> "$out"');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("TheOne — Communication Assist"),
-        backgroundColor: Colors.teal[900],
+        title: const Text("COMMUNICATION ASSIST"),
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
-          indicatorColor: Colors.tealAccent,
           tabs: const [
-            Tab(icon: Icon(Icons.forum), text: "Quick Phrases"),
-            Tab(icon: Icon(Icons.camera_alt), text: "Photo Assist"),
-            Tab(icon: Icon(Icons.auto_fix_high), text: "Intent Engine"),
-            Tab(icon: Icon(Icons.hearing), text: "Capture Reply"),
-            Tab(icon: Icon(Icons.sign_language), text: "Sign Dictionary"),
+            Tab(icon: Icon(Icons.forum), text: "Phrases"),
+            Tab(icon: Icon(Icons.camera_alt), text: "Photo"),
+            Tab(icon: Icon(Icons.auto_fix_high), text: "Intent"),
           ],
         ),
       ),
@@ -198,8 +249,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
           _buildQuickPhrasesTab(),
           _buildPhotoAssistTab(),
           _buildIntentTab(),
-          _buildCaptureReplyTab(),
-          _buildSignDictionaryTab(),
         ],
       ),
     );
@@ -210,29 +259,41 @@ class _CommunicationScreenState extends State<CommunicationScreen>
       children: [
         Padding(
           padding: const EdgeInsets.all(12.0),
-          child: Row(
+          child: Column(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _customPhraseController,
-                  decoration: const InputDecoration(
-                    hintText: "Add custom quick phrase...",
-                    border: OutlineInputBorder(),
-                  ),
+              const Text(
+                "TAP TO SPEAK",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
                 ),
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[800]),
-                onPressed: () {
-                  if (_customPhraseController.text.trim().isNotEmpty) {
-                    setState(() {
-                      _customPhrases.add(_customPhraseController.text.trim());
-                      _customPhraseController.clear();
-                    });
-                  }
-                },
-                child: const Text("Add", style: TextStyle(color: Colors.white)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _customPhraseController,
+                      decoration: const InputDecoration(
+                        hintText: "Add custom quick phrase...",
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (_customPhraseController.text.trim().isNotEmpty) {
+                        setState(() {
+                          _customPhrases.add(_customPhraseController.text.trim());
+                          _customPhraseController.clear();
+                        });
+                      }
+                    },
+                    child: const Text("Add"),
+                  ),
+                ],
               ),
             ],
           ),
@@ -245,7 +306,7 @@ class _CommunicationScreenState extends State<CommunicationScreen>
               _buildCategorySection("Café & Food", _foodPhrases),
               _buildCategorySection("Emergency & Navigation", _emergencyPhrases),
               if (_customPhrases.isNotEmpty) ...[
-                const Text("Custom Phrases", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal)),
+                const Text("Custom Phrases", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -254,6 +315,7 @@ class _CommunicationScreenState extends State<CommunicationScreen>
                       .map((p) => ActionChip(
                             avatar: const Icon(Icons.volume_up, size: 16),
                             label: Text(p),
+                            backgroundColor: const Color(0xFFE8EEF7),
                             onPressed: () => _speakPhrase(p),
                           ))
                       .toList(),
@@ -270,16 +332,16 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal)),
+        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: phrases.map((p) {
             return ActionChip(
-              avatar: const Icon(Icons.volume_up, size: 16, color: Colors.teal),
+              avatar: const Icon(Icons.volume_up, size: 16, color: AppColors.primary),
               label: Text(p['label']!),
-              backgroundColor: Colors.teal[50],
+              backgroundColor: const Color(0xFFE8EEF7),
               onPressed: () => _speakPhrase(p['text']!),
             );
           }).toList(),
@@ -293,39 +355,69 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     return Column(
       children: [
         Container(
-          height: 200,
+          height: 280,
           width: double.infinity,
-          color: Colors.black,
+          margin: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.primaryDark, width: 3),
+          ),
           child: _isCameraInitialized && _cameraController != null
-              ? CameraPreview(_cameraController!)
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: CameraPreview(_cameraController!),
+                )
               : const Center(child: Text("Camera Preview", style: TextStyle(color: Colors.white))),
         ),
         Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[800]),
             onPressed: _analyzePhotoForPhrases,
-            icon: const Icon(Icons.camera_enhance, color: Colors.white),
-            label: const Text("Photograph Menu / Sign for Suggestions", style: TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.camera_enhance),
+            label: const Text("SCAN MENU / SIGN"),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
           ),
         ),
+        const SizedBox(height: 12),
         Expanded(
           child: _cameraSuggestedPhrases.isEmpty
-              ? const Center(child: Text("Point camera at a menu or sign and tap analyze."))
+              ? const Center(child: Text("Point camera at a menu or sign and tap analyze.", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)))
               : ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   itemCount: _cameraSuggestedPhrases.length,
                   itemBuilder: (context, index) {
                     final p = _cameraSuggestedPhrases[index];
-                    return Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.lightbulb, color: Colors.amber),
-                        title: Text(p['label']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(p['text']!),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.volume_up, color: Colors.teal),
-                          onPressed: () => _speakPhrase(p['text']!),
-                        ),
+                    return Container(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lightbulb, color: AppColors.warning),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(p['label']!, style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                                const SizedBox(height: 4),
+                                Text(p['text']!, style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.volume_up, color: AppColors.primary),
+                            onPressed: () => _speakPhrase(p['text']!),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -342,156 +434,60 @@ class _CommunicationScreenState extends State<CommunicationScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Code-Mixed Intent Converter",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            "INTENT → SPEECH",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
           ),
           const SizedBox(height: 8),
           const Text(
-            "Type rough Tamil/English input (e.g., 'registration enga irukku nu kekkanum') and transform it into a polite, full spoken sentence.",
-            style: TextStyle(color: Colors.grey),
+            "Type rough Tamil/English. App makes a clear sentence.",
+            style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _intentInputController,
             decoration: const InputDecoration(
               hintText: "Type rough text here...",
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[800]),
             onPressed: _reformatIntentToSpeech,
-            icon: const Icon(Icons.auto_fix_high, color: Colors.white),
-            label: const Text("Transform to Polite Sentence", style: TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.auto_fix_high),
+            label: const Text("TRANSFORM"),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
           ),
           const SizedBox(height: 20),
           if (_reformattedSentence.isNotEmpty)
-            Card(
-              color: Colors.teal[50],
-              shape: RoundedRectangleBorder(
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Colors.teal),
+                border: Border.all(color: AppColors.primary, width: 2),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Clean Natural Spoken Sentence:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-                    const SizedBox(height: 8),
-                    Text(_reformattedSentence, style: const TextStyle(fontSize: 18)),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[900]),
-                      onPressed: () => _speakPhrase(_reformattedSentence),
-                      icon: const Icon(Icons.volume_up, color: Colors.white),
-                      label: const Text("Speak Sentence Aloud", style: TextStyle(color: Colors.white)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Result:", style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  Text(_reformattedSentence, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => _speakPhrase(_reformattedSentence),
+                    icon: const Icon(Icons.volume_up),
+                    label: const Text("SPEAK"),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44),
                     ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCaptureReplyTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.hearing, size: 64, color: Colors.teal),
-          const SizedBox(height: 16),
-          const Text(
-            "Capture Other Person's Reply",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "Press the button below and hold your phone towards the vendor or person speaking to transcribe their reply on screen.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isListeningToReply ? Colors.red[700] : Colors.teal[800],
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-            ),
-            onPressed: _isListeningToReply ? null : _listenToReply,
-            icon: Icon(_isListeningToReply ? Icons.mic : Icons.mic_none, color: Colors.white),
-            label: Text(
-              _isListeningToReply ? "Listening..." : "Listen for Response",
-              style: const TextStyle(color: Colors.white, fontSize: 16),
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (_lastOtherPersonReply.isNotEmpty)
-            Card(
-              elevation: 3,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    const Text("Spoken Reply Transcribed:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-                    const SizedBox(height: 8),
-                    Text(
-                      '"$_lastOtherPersonReply"',
-                      style: const TextStyle(fontSize: 20, fontStyle: FontStyle.italic),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSignDictionaryTab() {
-    final query = _signSearchController.text.toLowerCase();
-    final filtered = _signDictionary.where((s) {
-      return s['sign']!.toLowerCase().contains(query) || s['category']!.toLowerCase().contains(query);
-    }).toList();
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: TextField(
-            controller: _signSearchController,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              hintText: "Search Sign Language Dictionary...",
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: filtered.length,
-            itemBuilder: (context, index) {
-              final item = filtered[index];
-              return Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.teal[100],
-                    child: const Icon(Icons.sign_language, color: Colors.teal),
                   ),
-                  title: Text(item['sign']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text("${item['category']} — ${item['description']}"),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
+
 }

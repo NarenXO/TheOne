@@ -1,4 +1,5 @@
 import 'package:flutter_tts/flutter_tts.dart';
+import '../../utils/app_logger.dart';
 import '../tts_service.dart';
 
 class TtsServiceImpl implements TtsService {
@@ -20,6 +21,7 @@ class TtsServiceImpl implements TtsService {
   @override
   Future<void> speak(String text, {String? languageCode}) async {
     try {
+      AppLogger.i('TTS', 'Speaking out loud: "$text"');
       await _flutterTts.stop();
       if (languageCode != null) {
         await _flutterTts.setLanguage(languageCode);

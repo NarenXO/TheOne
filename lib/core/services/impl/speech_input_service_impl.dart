@@ -1,4 +1,5 @@
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import '../../utils/app_logger.dart';
 import '../speech_input_service.dart';
 
 class SpeechInputServiceImpl implements SpeechInputService {
@@ -22,30 +23,37 @@ class SpeechInputServiceImpl implements SpeechInputService {
       return SpeechResult(text: "", confidence: 0.0, languageCode: "en");
     }
 
+    AppLogger.i('STT', 'Listening for microphone speech input...');
+
     String recognizedText = "";
     double speechConfidence = 0.85;
 
     await _speech.listen(
       onResult: (result) {
         recognizedText = result.recognizedWords;
-        if (result.confidence > 0) {
+        if (result.hasConfidenceRating && result.confidence > 0) {
           speechConfidence = result.confidence;
+        } else if (recognizedText.isNotEmpty) {
+          speechConfidence = 0.88;
         }
       },
       listenOptions: stt.SpeechListenOptions(
-        listenFor: const Duration(seconds: 6),
-        pauseFor: const Duration(seconds: 3),
+        listenFor: const Duration(seconds: 12),
+        pauseFor: const Duration(seconds: 4),
         partialResults: true,
-        localeId: "en_IN",
+        cancelOnError: false,
+        localeId: 'en_IN',
       ),
     );
 
-    // Wait for listening to complete active speech
-    int checks = 0;
-    while (_speech.isListening && checks < 30) {
-      await Future.delayed(const Duration(milliseconds: 200));
-      checks++;
+    // wait until not listening, max 15s
+    final start = DateTime.now();
+    while (_speech.isListening && DateTime.now().difference(start).inSeconds < 15) {
+      await Future.delayed(const Duration(milliseconds: 250));
     }
+    await _speech.stop();
+
+    AppLogger.i('STT', 'Captured speech: "$recognizedText" (conf: $speechConfidence)');
 
     return SpeechResult(
       text: recognizedText,

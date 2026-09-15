@@ -23,16 +23,31 @@ void main() {
 
   test('uncertain with weak evidence', () {
     final r = engine.verify(query: 'x', bundle: EvidenceBundle([
-      Evidence(source: EvidenceSource.camera, type: EvidenceType.ocr, value: 'ROOM 204', confidence: 0.70),
+      Evidence(source: EvidenceSource.camera, type: EvidenceType.ocr, value: 'ROOM 204', confidence: 0.60),
     ]));
     expect(r.state, ConfidenceState.uncertain);
   });
 
-  test('conflict when sources disagree', () {
+  test('verified at 0.80 threshold', () {
+    final r = engine.verify(query: 'x', bundle: EvidenceBundle([
+      Evidence(source: EvidenceSource.camera, type: EvidenceType.ocr, value: 'ROOM 204', confidence: 0.80),
+    ]));
+    expect(r.state, ConfidenceState.verified);
+  });
+
+  test('conflict when sources disagree with high confidence', () {
     final r = engine.verify(query: 'x', bundle: EvidenceBundle([
       Evidence(source: EvidenceSource.camera, type: EvidenceType.ocr, value: 'ROOM 204', confidence: 0.98),
       Evidence(source: EvidenceSource.microphone, type: EvidenceType.speech, value: 'ROOM 302', confidence: 0.9),
     ]));
     expect(r.state, ConfidenceState.conflict);
+  });
+
+  test('no conflict when only one source has high confidence', () {
+    final r = engine.verify(query: 'x', bundle: EvidenceBundle([
+      Evidence(source: EvidenceSource.camera, type: EvidenceType.ocr, value: 'ROOM 204', confidence: 0.98),
+      Evidence(source: EvidenceSource.microphone, type: EvidenceType.speech, value: 'ROOM 302', confidence: 0.6),
+    ]));
+    expect(r.state, ConfidenceState.verified);
   });
 }

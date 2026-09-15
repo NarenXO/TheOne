@@ -1,16 +1,16 @@
 class EvidenceThresholds {
   /// Evidence with confidence >= [strong] is considered high certainty.
-  static const double strong = 0.85;
+  static const double strong = 0.80;
 
   /// Evidence with confidence between [uncertainLower] and [strong] is considered uncertain.
-  static const double uncertainLower = 0.60;
+  static const double uncertainLower = 0.50;
 
   /// Obstacle alert proximity thresholds (0.0 = far, 1.0 = immediately in front).
   static const double obstacleProximityClose = 0.70;
   static const double obstacleProximityMedium = 0.40;
 
   /// Low light threshold for camera brightness (0.0 = total darkness, 1.0 = full light).
-  static const double lowLightBrightness = 0.25;
+  static const double lowLightBrightness = 0.55;
 
   static bool isStrong(double confidence) => confidence >= strong;
 

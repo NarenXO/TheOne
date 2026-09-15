@@ -1,114 +1,169 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 class AppColors {
-  // Primary Palette
-  static const Color primary = Color(0xFF6200EE);
-  static const Color primaryDark = Color(0xFF3700B3);
-  static const Color accent = Color(0xFF03DAC6);
-
-  // Status & Evidence Colors
-  static const Color verifiedGreen = Color(0xFF1B5E20);
-  static const Color uncertainAmber = Color(0xFFE65100);
-  static const Color insufficientGrey = Color(0xFF424242);
-  static const Color conflictRed = Color(0xFFB71C1C);
-
-  // Sensor Indicators
-  static const Color sensorActive = Color(0xFFD32F2F);
-  static const Color sensorInactive = Color(0xFF388E3C);
-
-  // Emergency / SOS
-  static const Color sosRed = Color(0xFFC62828);
+  static const Color primary = Color(0xFF0B3D91); // strong blue
+  static const Color primaryDark = Color(0xFF062A66);
+  static const Color accent = Color(0xFF1565C0);
+  static const Color surface = Color(0xFFD5E3F8); // distinct light blue background
+  static const Color card = Colors.white;
+  static const Color textPrimary = Color(0xFF0F172A); // near black
+  static const Color textSecondary = Color(0xFF475569);
+  static const Color border = Color(0xFFCBD5E1);
+  static const Color danger = Color(0xFFB91C1C);
+  static const Color warning = Color(0xFFB45309);
+  static const Color success = Color(0xFF0F766E); // teal solid, NOT green gradient
+  static const Color info = Color(0xFF1D4ED8);
 }
 
 class AppTheme {
-  static ThemeData light({double textScale = 1.0, bool highContrast = false}) {
+  static ThemeData light() {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.primary,
-        brightness: Brightness.light,
-        primary: highContrast ? Colors.black : AppColors.primary,
-        surface: highContrast ? Colors.white : const Color(0xFFF8F9FA),
-        error: AppColors.conflictRed,
+      scaffoldBackgroundColor: AppColors.surface,
+      primaryColor: AppColors.primary,
+      fontFamily: 'Roboto',
+      colorScheme: const ColorScheme.light(
+        primary: AppColors.primary,
+        secondary: AppColors.accent,
+        surface: AppColors.card,
+        error: AppColors.danger,
+        onPrimary: Colors.white,
+        onSurface: AppColors.textPrimary,
       ),
-      scaffoldBackgroundColor: highContrast ? Colors.white : const Color(0xFFF5F5F7),
-      cardTheme: CardThemeData(
-        elevation: highContrast ? 4 : 2,
-        color: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: highContrast ? const BorderSide(color: Colors.black, width: 2) : BorderSide.none,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+          letterSpacing: 0.2,
+        ),
+      ),
+      textTheme: const TextTheme(
+        headlineSmall: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+          color: AppColors.textPrimary,
+        ),
+        titleLarge: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary,
+        ),
+        titleMedium: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textPrimary,
+        ),
+        bodyLarge: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          color: AppColors.textPrimary,
+          height: 1.35,
+        ),
+        bodyMedium: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: AppColors.textSecondary,
+          height: 1.35,
+        ),
+        labelLarge: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          minimumSize: const Size.fromHeight(60),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          textStyle: TextStyle(
-            fontSize: 18 * textScale,
-            fontWeight: FontWeight.bold,
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          textStyle: const TextStyle(
+            fontFamily: 'Roboto',
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
           ),
         ),
       ),
-      textTheme: _buildTextTheme(Brightness.light, textScale, highContrast),
-    );
-  }
-
-  static ThemeData dark({double textScale = 1.0, bool highContrast = false}) {
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.primary,
-        brightness: Brightness.dark,
-        primary: highContrast ? Colors.white : const Color(0xFFBB86FC),
-        surface: highContrast ? Colors.black : const Color(0xFF1E1E1E),
-        error: AppColors.conflictRed,
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.primary, width: 1.5),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          textStyle: const TextStyle(
+            fontFamily: 'Roboto',
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+          ),
+        ),
       ),
-      scaffoldBackgroundColor: highContrast ? Colors.black : const Color(0xFF121212),
+      chipTheme: ChipThemeData(
+        backgroundColor: const Color(0xFFE8EEF7),
+        selectedColor: AppColors.primary,
+        labelStyle: const TextStyle(
+          fontFamily: 'Roboto',
+          fontWeight: FontWeight.w600,
+          color: AppColors.textPrimary,
+        ),
+        side: const BorderSide(color: AppColors.border),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
       cardTheme: CardThemeData(
-        elevation: highContrast ? 4 : 2,
-        color: highContrast ? const Color(0xFF1A1A1A) : const Color(0xFF1E1E1E),
+        color: AppColors.card,
+        elevation: 1,
+        shadowColor: Colors.black26,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: highContrast ? const BorderSide(color: Colors.white, width: 2) : BorderSide.none,
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: AppColors.border),
         ),
       ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          minimumSize: const Size.fromHeight(60),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          textStyle: TextStyle(
-            fontSize: 18 * textScale,
-            fontWeight: FontWeight.bold,
-          ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.border),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+        ),
+        labelStyle: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+        hintStyle: const TextStyle(color: AppColors.textSecondary),
       ),
-      textTheme: _buildTextTheme(Brightness.dark, textScale, highContrast),
-    );
-  }
-
-  static TextTheme _buildTextTheme(Brightness brightness, double scale, bool hc) {
-    final baseColor = brightness == Brightness.light
-        ? (hc ? Colors.black : const Color(0xFF1C1B1F))
-        : (hc ? Colors.white : const Color(0xFFE6E1E5));
-
-    return TextTheme(
-      headlineLarge: TextStyle(fontSize: 32 * scale, fontWeight: FontWeight.bold, color: baseColor),
-      headlineMedium: TextStyle(fontSize: 26 * scale, fontWeight: FontWeight.bold, color: baseColor),
-      headlineSmall: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.w700, color: baseColor),
-      titleLarge: TextStyle(fontSize: 20 * scale, fontWeight: FontWeight.w600, color: baseColor),
-      titleMedium: TextStyle(fontSize: 18 * scale, fontWeight: FontWeight.w600, color: baseColor),
-      bodyLarge: TextStyle(fontSize: 18 * scale, color: baseColor),
-      bodyMedium: TextStyle(fontSize: 16 * scale, color: baseColor),
-      labelLarge: TextStyle(fontSize: 16 * scale, fontWeight: FontWeight.bold, color: baseColor),
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: Colors.white,
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: AppColors.textSecondary,
+        selectedLabelStyle: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+        unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
+        type: BottomNavigationBarType.fixed,
+        elevation: 8,
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: AppColors.danger,
+        foregroundColor: Colors.white,
+        elevation: 3,
+      ),
     );
   }
 }

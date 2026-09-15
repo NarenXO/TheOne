@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/evidence/evidence.dart';
 import '../../core/models/evidence_source.dart';
@@ -6,6 +6,8 @@ import '../../core/models/evidence_type.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/storage/session_storage.dart';
+import '../../core/utils/app_logger.dart';
+import '../../shared/theme/app_theme.dart';
 
 class CaptionLine {
   final String id;
@@ -48,13 +50,14 @@ class _HearingScreenState extends State<HearingScreen> {
   bool _isPaused = false;
   bool _isAmbientDangerActive = false;
   String? _dangerAlertMessage;
+  int _emptyListenCount = 0;
 
   int _currentSpeakerIndex = 1;
   final List<Color> _speakerColors = [
-    Colors.deepPurple,
-    Colors.teal,
-    Colors.indigo,
-    Colors.orange,
+    AppColors.primary,
+    AppColors.accent,
+    AppColors.info,
+    AppColors.success,
   ];
 
   @override
@@ -78,12 +81,24 @@ class _HearingScreenState extends State<HearingScreen> {
     if (_isListening) return;
 
     setState(() => _isListening = true);
+    _emptyListenCount = 0;
 
     while (_isListening && mounted) {
       if (!_isPaused) {
         final speechResult = await _speechService.listen();
         if (speechResult.text.trim().isNotEmpty) {
           _processSpeechInput(speechResult.text, speechResult.confidence);
+          _emptyListenCount = 0;
+        } else {
+          _emptyListenCount++;
+          if (_emptyListenCount >= 2) {
+            setState(() {
+              _isListening = false;
+              _emptyListenCount = 0;
+            });
+            await _speechService.stop();
+            return;
+          }
         }
       } else {
         await Future.delayed(const Duration(seconds: 1));
@@ -97,15 +112,31 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   void _processSpeechInput(String text, double confidence) async {
+    final lowerText = text.toLowerCase();
     String tone = "Neutral";
     IconData toneIcon = Icons.sentiment_neutral;
-    final lower = text.toLowerCase();
-    
-    if (lower.contains("!") || lower.contains("help") || lower.contains("stop") || lower.contains("danger") || lower.contains("fire") || lower.contains("emergency")) {
+
+    final urgentKeywords = [
+      "help", "stop", "danger", "fire", "alarm", "run", "careful",
+      "watch out", "emergency", "shout", "urgent", "fast", "hurry", "no", "don't"
+    ];
+    final inquisitiveKeywords = [
+      "?", "where", "what", "when", "why", "who", "how", "enga",
+      "eppo", "edhu", "en", "yaai", "which", "could you"
+    ];
+    final friendlyKeywords = [
+      "thanks", "thank you", "hello", "hi", "good", "please",
+      "nandri", "vanakkam", "welcome", "nice", "great"
+    ];
+
+    if (urgentKeywords.any((k) => lowerText.contains(k)) || lowerText.contains("!")) {
       tone = "Urgent";
       toneIcon = Icons.warning_amber_rounded;
-      _triggerDangerSoundAlert("Urgent sound / shout detected: '$text'");
-    } else if (lower.contains("hello") || lower.contains("thanks") || lower.contains("good") || lower.contains("vanakkam")) {
+      _triggerDangerSoundAlert("Urgent alert detected in speech: '$text'");
+    } else if (inquisitiveKeywords.any((k) => lowerText.contains(k))) {
+      tone = "Inquisitive";
+      toneIcon = Icons.help_outline;
+    } else if (friendlyKeywords.any((k) => lowerText.contains(k))) {
       tone = "Friendly";
       toneIcon = Icons.sentiment_satisfied_alt;
     }
@@ -121,8 +152,11 @@ class _HearingScreenState extends State<HearingScreen> {
       timestamp: DateTime.now(),
     );
 
+    AppLogger.i('HEARING', 'Caption line generated: "$text" (Speaker $_currentSpeakerIndex, Tone: $tone)');
+
     setState(() {
       _captions.add(newCaption);
+      // Alternate speaker heuristically on longer pauses
       if (_captions.length % 3 == 0) {
         _currentSpeakerIndex = _currentSpeakerIndex == 1 ? 2 : 1;
       }
@@ -130,6 +164,12 @@ class _HearingScreenState extends State<HearingScreen> {
 
     _scrollToBottom();
 
+    // Light haptic on non-empty captions
+    if (text.isNotEmpty) {
+      await _hapticService.uncertain();
+    }
+
+    // Create Evidence & Save
     final evidence = Evidence(
       source: EvidenceSource.microphone,
       type: EvidenceType.speech,
@@ -142,6 +182,7 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   void _triggerDangerSoundAlert(String message) async {
+    AppLogger.w('HEARING', 'AMBIENT DANGER DETECTED: $message');
     setState(() {
       _isAmbientDangerActive = true;
       _dangerAlertMessage = message;
@@ -159,147 +200,270 @@ class _HearingScreenState extends State<HearingScreen> {
     });
   }
 
+  Widget _buildHapticChip(String label, String phrase) {
+    return ActionChip(
+      avatar: const Icon(Icons.vibration, size: 16, color: AppColors.primary),
+      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+      backgroundColor: const Color(0xFFE8EEF7),
+      onPressed: () async {
+        await _hapticService.vibratePhrase(phrase);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Vibrating: '$label' pattern"),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Hearing Assist"),
+        title: const Text("HEARING ASSIST"),
         actions: [
           IconButton(
-            icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
+            icon: Icon(_isPaused ? Icons.play_circle_outline : Icons.pause_circle_outline),
             onPressed: () => setState(() => _isPaused = !_isPaused),
-            tooltip: _isPaused ? "Resume Captions" : "Freeze / Pause Captions",
+            tooltip: _isPaused ? "Resume captions" : "Freeze captions",
           ),
           IconButton(
-            icon: const Icon(Icons.clear_all),
+            icon: const Icon(Icons.delete_outline),
             onPressed: () => setState(() => _captions.clear()),
-            tooltip: "Clear Captions",
+            tooltip: "Clear Caption History",
           ),
         ],
       ),
       body: Column(
         children: [
+          // Feature Banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: AppColors.primary,
+            child: const Text(
+              "Live captions • Speaker tags • Danger alerts",
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          // Ambient Danger Banner Alert
           if (_isAmbientDangerActive && _dangerAlertMessage != null)
             Container(
               width: double.infinity,
-              color: Colors.red[900],
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.all(14),
+              color: AppColors.danger,
               child: Row(
                 children: [
-                  const Icon(Icons.warning, color: Colors.white, size: 28),
+                  const Icon(Icons.error, color: Colors.white, size: 32),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       _dangerAlertMessage!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                     ),
                   ),
                 ],
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
+          // Control Toolbar
+          Container(
+            margin: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isListening ? Colors.red[800] : Colors.teal[800],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isListening ? AppColors.danger : AppColors.primary,
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                        onPressed: _isListening ? _stopListening : _startContinuousListening,
+                        icon: Icon(_isListening ? Icons.mic_off : Icons.mic, color: Colors.white),
+                        label: Text(
+                          _isListening ? "STOP CAPTIONS" : "START / STOP CAPTIONS",
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
                     ),
-                    onPressed: _isListening ? _stopListening : _startContinuousListening,
-                    icon: Icon(_isListening ? Icons.mic_off : Icons.mic),
-                    label: Text(
-                      _isListening ? "Stop Captions" : "Start Live Captions",
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _isListening
+                        ? (_isPaused ? AppColors.warning.withValues(alpha: 0.2) : AppColors.success.withValues(alpha: 0.2))
+                        : AppColors.textSecondary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _isListening
+                          ? (_isPaused ? AppColors.warning : AppColors.success)
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                  child: Text(
+                    _isListening ? (_isPaused ? "PAUSED" : "LIVE") : (_emptyListenCount > 0 ? "CAPTIONS AUTO-STOPPED (SILENCE)" : "OFFLINE"),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: _isListening
+                          ? (_isPaused ? AppColors.warning : AppColors.success)
+                          : (_emptyListenCount > 0 ? AppColors.warning : AppColors.textSecondary),
+                      fontSize: 12,
                     ),
                   ),
                 ),
               ],
             ),
           ),
+          // Haptic Vibration Vocabulary
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.vibration, color: AppColors.primary, size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      "HAPTIC VIBRATION VOCABULARY",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildHapticChip("YES", "yes"),
+                    _buildHapticChip("NO", "no"),
+                    _buildHapticChip("NAME CALLED", "name"),
+                    _buildHapticChip("THANK YOU", "thank"),
+                    _buildHapticChip("EXCUSE ME", "excuse"),
+                    _buildHapticChip("DANGER", "danger"),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Caption Feed List
           Expanded(
             child: _captions.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.hearing, size: 64, color: Colors.grey[400]),
-                        const SizedBox(height: 16),
-                        Text(
-                          _isListening
-                              ? "Listening for speech..."
-                              : "Tap 'Start Live Captions' to stream real-time spoken captions.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24.0),
+                      child: Text(
+                        "Start live captions to transcribe speech in real time.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
-                      ],
+                      ),
                     ),
                   )
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: _captions.length,
                     itemBuilder: (context, index) {
                       final item = _captions[index];
+                      final isLowConfidence = item.confidence < 0.70;
+
                       return Container(
                         margin: const EdgeInsets.symmetric(vertical: 6),
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).cardColor,
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: item.speakerColor.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: isLowConfidence ? AppColors.warning : AppColors.border,
+                            width: isLowConfidence ? 2 : 1,
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 10,
-                                      height: 10,
-                                      decoration: BoxDecoration(
-                                        color: item.speakerColor,
-                                        shape: BoxShape.circle,
-                                      ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: item.speakerColor.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: item.speakerColor, width: 1),
+                                  ),
+                                  child: Text(
+                                    item.speakerLabel,
+                                    style: TextStyle(
+                                      color: item.speakerColor,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
                                     ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      item.speakerLabel,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: item.speakerColor,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                                Row(
-                                  children: [
-                                    Icon(item.toneIcon, size: 16, color: Colors.grey[600]),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      item.toneLabel,
-                                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                    ),
-                                  ],
+                                const SizedBox(width: 8),
+                                Icon(item.toneIcon, size: 16, color: AppColors.textSecondary),
+                                const SizedBox(width: 4),
+                                Text(
+                                  item.toneLabel,
+                                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  "${(item.confidence * 100).toStringAsFixed(0)}%",
+                                  style: TextStyle(
+                                    color: isLowConfidence ? AppColors.warning : AppColors.textSecondary,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 8),
                             Text(
                               item.text,
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
+                            if (isLowConfidence)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  "⚠️ Low confidence transcription",
+                                  style: TextStyle(color: AppColors.warning, fontSize: 11, fontWeight: FontWeight.w800),
+                                ),
+                              ),
                           ],
                         ),
                       );
