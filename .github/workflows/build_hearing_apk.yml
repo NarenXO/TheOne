@@ -3,8 +3,8 @@ name: Build Hearing Assist APK
 on:
   workflow_dispatch:
   push:
-    branches:
-      - feature/salman-hearing
+    tags:
+      - 'v*'
 
 jobs:
   build-apk:
