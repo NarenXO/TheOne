@@ -139,7 +139,16 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
     try {
+      // 1. Stop active image stream if running to free Camera2 HAL surface
+      if (_cameraController!.value.isStreamingImages) {
+        await _cameraController!.stopImageStream();
+      }
+
+      // 2. Pause preview briefly before taking picture to prevent surface conflict
+      await _cameraController!.pausePreview();
       final file = await _cameraController!.takePicture();
+      await _cameraController!.resumePreview();
+
       final inputImage = InputImage.fromFilePath(file.path);
       final ocrResults = await _ocrService.extractText(inputImage);
 
@@ -167,6 +176,8 @@ class _CommunicationScreenState extends State<CommunicationScreen>
       AppLogger.i('COMMUNICATION', 'Photo analyzed, generated ${suggestions.length} phrase choices');
     } catch (e) {
       AppLogger.e('COMMUNICATION', 'Photo analysis error: $e');
+      // Resume preview if paused
+      try { await _cameraController?.resumePreview(); } catch (_) {}
     }
   }
 

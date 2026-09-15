@@ -9,7 +9,6 @@ import '../../core/evidence/relevance_engine.dart';
 import '../../core/evidence/zero_assumption_engine.dart';
 import '../../core/evidence/verification_result.dart';
 import '../../core/models/confidence_state.dart';
-import '../../core/models/evidence_type.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/object_detection_service_impl.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
@@ -44,8 +43,9 @@ class _VisionScreenState extends State<VisionScreen> {
 
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
-  bool _isListening = false;
-  String _statusLine = 'Tap mic and say "Hey Rook" to activate';
+  bool _isLoopListening = false;
+  String _lastHeardQuery = "";
+  final String _statusLine = 'Always listening for "Hey Rook"...';
 
   @override
   void initState() {
@@ -55,6 +55,7 @@ class _VisionScreenState extends State<VisionScreen> {
       objectService: _objectService,
     );
     _initCamera();
+    _startContinuousListeningLoop();
   }
 
   Future<void> _initCamera() async {
@@ -110,104 +111,49 @@ class _VisionScreenState extends State<VisionScreen> {
     }
   }
 
-  Future<void> _processVerification(EvidenceBundle bundle, String query) async {
-    final rankedItems = _relevanceEngine.rank(query: query, evidence: bundle.items);
-    final rankedBundle = EvidenceBundle(rankedItems);
-    final result = _zeroAssumptionEngine.verify(query: query, bundle: rankedBundle);
+  void _startContinuousListeningLoop() async {
+    if (_isLoopListening) return;
+    _isLoopListening = true;
 
-    setState(() {
-      _lastResult = result;
-      _activeEvidence = bundle.items;
-    });
+    final speechService = SpeechInputServiceImpl();
 
-    for (final e in rankedItems) {
-      await _sessionStorage.saveEvidence(e);
-    }
+    while (_isLoopListening && mounted) {
+      final speechResult = await speechService.listen();
+      final text = speechResult.text.toLowerCase().trim();
 
-    await _ttsService.speak(result.message);
+      if (text.contains("hello rook") || text.contains("hey rook") || text.contains("rook")) {
+        AppLogger.i('VISION', 'WAKE WORD HEARD: "$text"');
 
-    switch (result.state) {
-      case ConfidenceState.verified:
-        await _hapticService.verified();
-        break;
-      case ConfidenceState.uncertain:
-      case ConfidenceState.insufficient:
-        await _hapticService.uncertain();
-        break;
-      case ConfidenceState.conflict:
-        await _hapticService.conflict();
-        break;
-    }
-  }
-
-  Future<void> _voiceAsk() async {
-    if (!(await Permission.microphone.request()).isGranted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Microphone permission required for voice query.")),
-        );
-      }
-      return;
-    }
-
-    setState(() => _isListening = true);
-    setState(() => _statusLine = "Listening... Say 'Hey Rook' or your question");
-
-    final speech = SpeechInputServiceImpl();
-    final result = await speech.listen();
-
-    if (!mounted) return;
-
-    setState(() => _isListening = false);
-
-    if (result.text.trim().isEmpty) {
-      setState(() => _statusLine = "No speech heard. Please try tapping again.");
-      await _ttsService.speak("I did not catch that. Please speak again.");
-      return;
-    }
-
-    final text = result.text.trim().toLowerCase();
-    AppLogger.i('VISION', 'Voice query captured: "${result.text.trim()}"');
-
-    // Wake word detection
-    if (text.contains("hello rook") || text.contains("hey rook")) {
-      setState(() => _statusLine = "Wake word detected. Processing request...");
-
-      // Check for SOS keywords
-      if (text.contains("help") || text.contains("sos") || text.contains("emergency")) {
-        setState(() => _statusLine = "Sending SOS alert...");
-        await SosService().sendSosSms();
-        await _ttsService.speak("SOS alert sent to emergency contact.");
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("🚨 SOS Alert Sent"),
-              backgroundColor: AppColors.danger,
-              duration: Duration(seconds: 3),
-            ),
-          );
+        if (text.contains("help") || text.contains("sos") || text.contains("emergency")) {
+          await _ttsService.speak("Triggering emergency SOS.");
+          await SosService().sendSosSms();
+        } else {
+          _lastHeardQuery = speechResult.text;
+          await _ttsService.speak("Scanning camera.");
+          await _scanLiveCamera();
         }
-        setState(() => _statusLine = "SOS alert sent");
-        return;
       }
 
-      // Otherwise, capture picture and analyze
-      await _scanLiveCamera();
-    } else {
-      // Not a wake word, treat as regular query
-      await _scanLiveCamera();
+      await Future.delayed(const Duration(milliseconds: 500));
     }
   }
 
   Future<void> _scanLiveCamera() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      setState(() => _statusLine = 'Camera not ready');
       return;
     }
+
     try {
-      AppLogger.i('VISION', 'Starting live camera scan...');
-      setState(() => _statusLine = 'Scanning...');
+      // 1. Stop active image stream if running to free Camera2 HAL surface
+      if (_cameraController!.value.isStreamingImages) {
+        await _cameraController!.stopImageStream();
+      }
+
+      // 2. Pause preview briefly before taking picture to prevent surface conflict
+      await _cameraController!.pausePreview();
       final file = await _cameraController!.takePicture();
+      await _cameraController!.resumePreview();
+
       final bytes = await file.readAsBytes();
       final brightness = _visionPipeline.estimateBrightnessFromBytes(bytes);
 
@@ -217,27 +163,44 @@ class _VisionScreenState extends State<VisionScreen> {
         estimatedBrightness: brightness,
       );
 
-      for (final e in bundle.items) {
-        if (e.type == EvidenceType.obstacle) {
-          final p = (e.metadata['proximity01'] as num?)?.toDouble() ?? 0;
-          if (p >= 0.4) await _hapticService.obstacleProximity(p);
-        }
-      }
-
-      final query = 'What is in front of me?';
-
-      await _processVerification(bundle, query);
+      final query = _lastHeardQuery.isNotEmpty ? _lastHeardQuery : "What is in front of me?";
+      final rankedItems = _relevanceEngine.rank(query: query, evidence: bundle.items);
+      final result = _zeroAssumptionEngine.verify(query: query, bundle: EvidenceBundle(rankedItems));
 
       setState(() {
-        _statusLine = 'Scan complete (brightness ${(brightness * 100).toStringAsFixed(0)}%)';
+        _lastResult = result;
+        _activeEvidence = rankedItems;
       });
+
+      for (final e in rankedItems) {
+        await _sessionStorage.saveEvidence(e);
+      }
+
+      // ALWAYS Speak answer back out loud to the blind user!
+      await _ttsService.speak(result.message);
+
+      switch (result.state) {
+        case ConfidenceState.verified:
+          await _hapticService.verified();
+          break;
+        case ConfidenceState.uncertain:
+        case ConfidenceState.insufficient:
+          await _hapticService.uncertain();
+          break;
+        case ConfidenceState.conflict:
+          await _hapticService.conflict();
+          break;
+      }
     } catch (e) {
-      setState(() => _statusLine = 'Scan failed: $e');
+      AppLogger.e('CAMERA', 'Safe capture error: $e');
+      // Resume preview if paused
+      try { await _cameraController?.resumePreview(); } catch (_) {}
     }
   }
 
   @override
   void dispose() {
+    _isLoopListening = false;
     _cameraController?.dispose();
     _ocrService.dispose();
     _objectService.dispose();
@@ -325,17 +288,6 @@ class _VisionScreenState extends State<VisionScreen> {
                     color: AppColors.textPrimary,
                   ),
                   textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _isListening ? null : _voiceAsk,
-                icon: Icon(_isListening ? Icons.mic : Icons.mic_none, size: 32),
-                label: Text(_isListening ? "LISTENING..." : "TAP & SAY 'HEY ROOK'"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  minimumSize: const Size.fromHeight(60),
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
               ),
               const SizedBox(height: 16),
