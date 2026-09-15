@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/safety/sos_service.dart';
+import '../../core/storage/preferences_service.dart';
 import '../../features/vision/vision_screen.dart';
 import '../../features/hearing/hearing_screen.dart';
 import '../../features/communication/communication_screen.dart';
@@ -15,6 +16,27 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
   final SosService _sosService = SosService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferredMode();
+  }
+
+  Future<void> _loadPreferredMode() async {
+    final mode = await PreferencesService.getUserMode();
+    if (mounted) {
+      setState(() {
+        if (mode == 'vision') {
+          _currentIndex = 0;
+        } else if (mode == 'hearing') {
+          _currentIndex = 1;
+        } else if (mode == 'communication') {
+          _currentIndex = 2;
+        }
+      });
+    }
+  }
 
   final List<Widget> _screens = const [
     VisionScreen(),

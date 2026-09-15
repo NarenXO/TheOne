@@ -9,7 +9,6 @@ import 'package:theone/shared/widgets/sensor_indicator.dart';
 import 'package:theone/shared/widgets/error_card.dart';
 import 'package:theone/shared/widgets/status_badges.dart';
 import 'package:theone/features/onboarding/onboarding_screen.dart';
-import 'package:theone/features/onboarding/questionnaire_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -158,27 +157,27 @@ void main() {
   });
 
   group('Widget Tests - Onboarding Flow', () {
-    testWidgets('OnboardingWelcomeScreen renders correctly', (tester) async {
+    testWidgets('OnboardingScreen renders correctly', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: OnboardingWelcomeScreen(),
+          home: OnboardingScreen(),
         ),
       );
 
       expect(find.text('TheOne'), findsOneWidget);
-      expect(find.text('Get Started'), findsOneWidget);
+      expect(find.text('Your Name'), findsOneWidget);
     });
 
-    testWidgets('QuestionnaireScreen renders all 3 explicit assistance modes', (tester) async {
+    testWidgets('OnboardingScreen renders all 3 mode buttons', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: QuestionnaireScreen(),
+          home: OnboardingScreen(),
         ),
       );
 
-      expect(find.text('Visual Assistance'), findsOneWidget);
-      expect(find.text('Hearing Assistance'), findsOneWidget);
-      expect(find.text('Communication Assistance'), findsOneWidget);
+      expect(find.text('VISION ASSIST'), findsOneWidget);
+      expect(find.text('HEARING ASSIST'), findsOneWidget);
+      expect(find.text('COMMUNICATION ASSIST'), findsOneWidget);
     });
   });
 }

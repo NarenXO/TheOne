@@ -1,15 +1,14 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:theone/main.dart';
+import 'package:theone/features/onboarding/onboarding_screen.dart';
 
 void main() {
-  testWidgets('App smoke test - boots into main screen', (WidgetTester tester) async {
-    await tester.pumpWidget(const TheOneApp(prefs: null));
+  testWidgets('App smoke test - boots into onboarding on first launch', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const TheOneApp());
     await tester.pumpAndSettle();
 
-    expect(find.byType(BottomNavigationBar), findsOneWidget);
-    expect(find.text('Vision'), findsOneWidget);
-    expect(find.text('Hearing'), findsOneWidget);
-    expect(find.text('Talk'), findsOneWidget);
+    expect(find.byType(OnboardingScreen), findsOneWidget);
   });
 }

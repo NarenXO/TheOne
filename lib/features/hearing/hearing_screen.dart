@@ -5,6 +5,7 @@ import '../../core/models/evidence_source.dart';
 import '../../core/models/evidence_type.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
+import '../../core/storage/preferences_service.dart';
 import '../../core/storage/session_storage.dart';
 import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
@@ -47,7 +48,6 @@ class _HearingScreenState extends State<HearingScreen> {
   final ScrollController _scrollController = ScrollController();
 
   bool _isListening = false;
-  bool _isPaused = false;
   bool _isAmbientDangerActive = false;
   String? _dangerAlertMessage;
   int _emptyListenCount = 0;
@@ -60,6 +60,19 @@ class _HearingScreenState extends State<HearingScreen> {
     AppColors.success,
   ];
 
+  String _savedUserName = "Naren";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserName();
+  }
+
+  void _loadUserName() async {
+    final name = await PreferencesService.getUserName();
+    if (mounted) setState(() => _savedUserName = name);
+  }
+
   @override
   void dispose() {
     _speechService.stop();
@@ -68,7 +81,7 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   void _scrollToBottom() {
-    if (_scrollController.hasClients && !_isPaused) {
+    if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 300),
@@ -84,24 +97,20 @@ class _HearingScreenState extends State<HearingScreen> {
     _emptyListenCount = 0;
 
     while (_isListening && mounted) {
-      if (!_isPaused) {
-        final speechResult = await _speechService.listen();
-        if (speechResult.text.trim().isNotEmpty) {
-          _processSpeechInput(speechResult.text, speechResult.confidence);
-          _emptyListenCount = 0;
-        } else {
-          _emptyListenCount++;
-          if (_emptyListenCount >= 2) {
-            setState(() {
-              _isListening = false;
-              _emptyListenCount = 0;
-            });
-            await _speechService.stop();
-            return;
-          }
-        }
+      final speechResult = await _speechService.listen();
+      if (speechResult.text.trim().isNotEmpty) {
+        _processSpeechInput(speechResult.text, speechResult.confidence);
+        _emptyListenCount = 0;
       } else {
-        await Future.delayed(const Duration(seconds: 1));
+        _emptyListenCount++;
+        if (_emptyListenCount >= 2) {
+          setState(() {
+            _isListening = false;
+            _emptyListenCount = 0;
+          });
+          await _speechService.stop();
+          return;
+        }
       }
     }
   }
@@ -139,6 +148,21 @@ class _HearingScreenState extends State<HearingScreen> {
     } else if (friendlyKeywords.any((k) => lowerText.contains(k))) {
       tone = "Friendly";
       toneIcon = Icons.sentiment_satisfied_alt;
+    }
+
+    // Check if live audio contains user's name
+    if (_savedUserName.isNotEmpty && lowerText.contains(_savedUserName.toLowerCase())) {
+      AppLogger.w('HEARING', 'NAME CALLED DETECTED: "$text" contains "$_savedUserName"');
+      _hapticService.vibratePhrase("name");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("📳 Name Called Alert: Someone said '$_savedUserName'"),
+            backgroundColor: AppColors.primary,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
 
     final newCaption = CaptionLine(
@@ -222,38 +246,12 @@ class _HearingScreenState extends State<HearingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFD5E3F8),
       appBar: AppBar(
         title: const Text("HEARING ASSIST"),
-        actions: [
-          IconButton(
-            icon: Icon(_isPaused ? Icons.play_circle_outline : Icons.pause_circle_outline),
-            onPressed: () => setState(() => _isPaused = !_isPaused),
-            tooltip: _isPaused ? "Resume captions" : "Freeze captions",
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => setState(() => _captions.clear()),
-            tooltip: "Clear Caption History",
-          ),
-        ],
       ),
       body: Column(
         children: [
-          // Feature Banner
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            color: AppColors.primary,
-            child: const Text(
-              "Live captions • Speaker tags • Danger alerts",
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
           // Ambient Danger Banner Alert
           if (_isAmbientDangerActive && _dangerAlertMessage != null)
             Container(
@@ -295,7 +293,7 @@ class _HearingScreenState extends State<HearingScreen> {
                         onPressed: _isListening ? _stopListening : _startContinuousListening,
                         icon: Icon(_isListening ? Icons.mic_off : Icons.mic, color: Colors.white),
                         label: Text(
-                          _isListening ? "STOP CAPTIONS" : "START / STOP CAPTIONS",
+                          _isListening ? "STOP CAPTIONS" : "START LIVE CAPTIONS",
                           style: const TextStyle(color: Colors.white),
                         ),
                       ),
@@ -303,28 +301,12 @@ class _HearingScreenState extends State<HearingScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _isListening
-                        ? (_isPaused ? AppColors.warning.withValues(alpha: 0.2) : AppColors.success.withValues(alpha: 0.2))
-                        : AppColors.textSecondary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _isListening
-                          ? (_isPaused ? AppColors.warning : AppColors.success)
-                          : AppColors.textSecondary,
-                    ),
-                  ),
-                  child: Text(
-                    _isListening ? (_isPaused ? "PAUSED" : "LIVE") : (_emptyListenCount > 0 ? "CAPTIONS AUTO-STOPPED (SILENCE)" : "OFFLINE"),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: _isListening
-                          ? (_isPaused ? AppColors.warning : AppColors.success)
-                          : (_emptyListenCount > 0 ? AppColors.warning : AppColors.textSecondary),
-                      fontSize: 12,
-                    ),
+                OutlinedButton.icon(
+                  onPressed: () => setState(() => _captions.clear()),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text("CLEAR CAPTIONS"),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
                   ),
                 ),
               ],

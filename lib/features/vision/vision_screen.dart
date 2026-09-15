@@ -14,7 +14,6 @@ import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/object_detection_service_impl.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
-import '../../core/services/impl/torch_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/storage/session_storage.dart';
 import '../../core/utils/app_logger.dart';
@@ -32,13 +31,10 @@ class VisionScreen extends StatefulWidget {
 class _VisionScreenState extends State<VisionScreen> {
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
-  bool _isTorchOn = false;
-  String _cameraErrorMsg = "";
 
   final _ocrService = OcrServiceImpl();
   final _ttsService = TtsServiceImpl();
   final _hapticService = HapticServiceImpl();
-  final _torchService = TorchServiceImpl();
   final _zeroAssumptionEngine = ZeroAssumptionEngine();
   final _relevanceEngine = RelevanceEngine();
   final _sessionStorage = SessionStorage();
@@ -58,27 +54,14 @@ class _VisionScreenState extends State<VisionScreen> {
     _visionPipeline = VisionPipeline(
       ocrService: _ocrService,
       objectService: _objectService,
-      torchService: _torchService,
     );
     _initCamera();
   }
 
   Future<void> _initCamera() async {
     if (!mounted) return;
-    setState(() => _cameraErrorMsg = "Requesting permissions...");
-
-    final camStatus = await Permission.camera.request();
+    await Permission.camera.request();
     await Permission.microphone.request();
-
-    if (!camStatus.isGranted) {
-      if (mounted) {
-        setState(() {
-          _isCameraInitialized = false;
-          _cameraErrorMsg = "Camera permission denied. Tap button below to grant in phone settings.";
-        });
-      }
-      return;
-    }
 
     try {
       if (_cameraController != null) {
@@ -88,76 +71,40 @@ class _VisionScreenState extends State<VisionScreen> {
 
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
-        if (mounted) {
-          setState(() {
-            _isCameraInitialized = false;
-            _cameraErrorMsg = "No camera hardware detected.";
-          });
-        }
+        if (mounted) setState(() => _isCameraInitialized = false);
         return;
       }
 
-      final firstCam = cameras.firstWhere(
+      final backCam = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
 
       _cameraController = CameraController(
-        firstCam,
-        ResolutionPreset.medium,
+        backCam,
+        ResolutionPreset.high,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       try {
         await _cameraController!.initialize();
-      } catch (_) {
-        // Fallback to low resolution if medium fails
+      } catch (e) {
+        AppLogger.w('CAMERA', 'High resolution failed: $e, trying medium resolution');
         _cameraController = CameraController(
-          firstCam,
-          ResolutionPreset.low,
+          backCam,
+          ResolutionPreset.medium,
           enableAudio: false,
-          imageFormatGroup: ImageFormatGroup.jpeg,
         );
         await _cameraController!.initialize();
       }
 
       if (mounted) {
-        setState(() {
-          _isCameraInitialized = true;
-          _cameraErrorMsg = "";
-        });
-        AppLogger.i('VISION', 'Camera successfully initialized (${firstCam.name})');
+        setState(() => _isCameraInitialized = true);
+        AppLogger.i('CAMERA', 'Camera initialized successfully');
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isCameraInitialized = false;
-          _cameraErrorMsg = "Camera error: $e. Tap retry below.";
-        });
-        AppLogger.e('VISION', 'Camera init error: $e');
-      }
-    }
-  }
-
-  Future<void> _toggleTorch() async {
-    final nextState = !_isTorchOn;
-    try {
-      if (_isCameraInitialized && _cameraController != null) {
-        await _cameraController!.setFlashMode(
-          nextState ? FlashMode.torch : FlashMode.off,
-        );
-      } else {
-        if (nextState) {
-          await _torchService.turnOn();
-        } else {
-          await _torchService.turnOff();
-        }
-      }
-      setState(() => _isTorchOn = nextState);
-      AppLogger.i('TORCH', 'Toggled flashlight state: $nextState');
-    } catch (e) {
-      // Fallback handling if flash unavailable
+      AppLogger.e('CAMERA', 'Camera init exception: $e');
+      if (mounted) setState(() => _isCameraInitialized = false);
     }
   }
 
@@ -168,24 +115,14 @@ class _VisionScreenState extends State<VisionScreen> {
 
     setState(() {
       _lastResult = result;
-      _activeEvidence = bundle.items; // Always show original bundle items
+      _activeEvidence = bundle.items;
     });
 
     for (final e in rankedItems) {
       await _sessionStorage.saveEvidence(e);
     }
 
-    // Always speak result.message
     await _ttsService.speak(result.message);
-
-    // If result is weak but we have OCR text, speak it
-    if (result.state == ConfidenceState.insufficient || result.state == ConfidenceState.uncertain) {
-      final ocrText = bundle.items.where((e) => e.type.name == 'ocr').map((e) => e.value).toList();
-      if (ocrText.isNotEmpty) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _ttsService.speak("I can read: ${ocrText.take(2).join(', ')}");
-      }
-    }
 
     switch (result.state) {
       case ConfidenceState.verified:
@@ -245,19 +182,12 @@ class _VisionScreenState extends State<VisionScreen> {
       final bytes = await file.readAsBytes();
       final brightness = _visionPipeline.estimateBrightnessFromBytes(bytes);
 
-      await _visionPipeline.applyAutoTorch(
-        brightness: brightness,
-        cameraController: _cameraController,
-      );
-
       final inputImage = InputImage.fromFilePath(file.path);
       final bundle = await _visionPipeline.processInputImage(
         inputImage,
         estimatedBrightness: brightness,
-        cameraController: _cameraController,
       );
 
-      // Obstacle haptic for closest obstacle
       for (final e in bundle.items) {
         if (e.type == EvidenceType.obstacle) {
           final p = (e.metadata['proximity01'] as num?)?.toDouble() ?? 0;
@@ -272,9 +202,7 @@ class _VisionScreenState extends State<VisionScreen> {
       await _processVerification(bundle, query);
 
       setState(() {
-        _statusLine = _visionPipeline.isTorchAutoOn
-            ? 'Low light detected — torch ON automatically'
-            : 'Scan complete (brightness ${(brightness * 100).toStringAsFixed(0)}%) — torch OFF';
+        _statusLine = 'Scan complete (brightness ${(brightness * 100).toStringAsFixed(0)}%)';
       });
     } catch (e) {
       setState(() => _statusLine = 'Scan failed: $e');
@@ -296,36 +224,28 @@ class _VisionScreenState extends State<VisionScreen> {
         height: 280,
         width: double.infinity,
         color: AppColors.primaryDark,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.camera_enhance, color: Colors.white70, size: 48),
-            const SizedBox(height: 12),
-            Text(
-              _cameraErrorMsg.isNotEmpty ? _cameraErrorMsg : "Initializing Camera...",
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AppColors.primary),
-              onPressed: _initCamera,
-              icon: const Icon(Icons.refresh),
-              label: const Text("RETRY / ENABLE CAMERA"),
-            ),
-          ],
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.camera_alt, color: Colors.white, size: 48),
+              SizedBox(height: 8),
+              Text("Initializing Camera...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            ],
+          ),
         ),
       );
     }
 
-    return Container(
-      height: 280,
-      width: double.infinity,
-      color: Colors.black,
-      child: ClipRect(
+    return Center(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.primary, width: 3),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: AspectRatio(
-          aspectRatio: _cameraController!.value.aspectRatio,
+          aspectRatio: 3 / 4,
           child: CameraPreview(_cameraController!),
         ),
       ),
@@ -335,14 +255,10 @@ class _VisionScreenState extends State<VisionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFD5E3F8),
       appBar: AppBar(
         title: const Text("VISION ASSIST"),
         actions: [
-          IconButton(
-            icon: Icon(_isTorchOn ? Icons.flash_on : Icons.flash_off),
-            onPressed: _toggleTorch,
-            tooltip: "Toggle Flashlight",
-          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: () async {
@@ -362,163 +278,128 @@ class _VisionScreenState extends State<VisionScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        child: Column(
-          children: [
-          // Feature Banner
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            color: AppColors.primary,
-            child: const Text(
-              "Camera • OCR • Objects • Evidence Engine",
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          // Camera Preview Box
-          Container(
-            margin: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.primaryDark, width: 3),
-            ),
-            child: _buildCameraPreview(),
-          ),
-          // Status Strip
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE2E8F0),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              _statusLine,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Query Field
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: TextField(
-              controller: _queryController,
-              decoration: const InputDecoration(
-                labelText: "Ask a question (Tamil / English)",
-                prefixIcon: Icon(Icons.question_answer),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Button Row 1
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _scanLiveCamera,
-                    icon: const Icon(Icons.camera_alt),
-                    label: const Text("SCAN LIVE CAMERA"),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isListening ? null : _voiceAsk,
-                    icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                    label: Text(_isListening ? "LISTENING..." : "VOICE QUERY + SCAN"),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Result Banner
-          if (_lastResult != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              margin: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: _lastResult!.state == ConfidenceState.verified
-                    ? AppColors.success
-                    : _lastResult!.state == ConfidenceState.conflict
-                        ? AppColors.danger
-                        : AppColors.warning,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                _lastResult!.message,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              _buildCameraPreview(),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
                   color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                textAlign: TextAlign.center,
+                child: Text(
+                  _statusLine,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
-          const SizedBox(height: 8),
-          // Evidence Section
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              "EVIDENCE",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Evidence Cards Feed
-          SizedBox(
-            height: 300,
-            child: _activeEvidence.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Text(
-                        "No evidence scanned yet. Run a query or scan.",
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                        ),
+              const SizedBox(height: 16),
+              Card(
+                color: Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: TextField(
+                    controller: _queryController,
+                    decoration: InputDecoration(
+                      labelText: "Ask a question (Tamil / English)",
+                      prefixIcon: const Icon(Icons.question_answer),
+                      suffixIcon: IconButton(
+                        icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                        onPressed: _isListening ? null : _voiceAsk,
                       ),
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: _activeEvidence.length,
-                    itemBuilder: (context, index) {
-                      final item = _activeEvidence[index];
-                      return EvidenceCard(
-                        evidence: item,
-                        state: _lastResult?.state ?? ConfidenceState.verified,
-                      );
-                    },
                   ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: _scanLiveCamera,
+                icon: const Icon(Icons.camera_alt),
+                label: const Text("SCAN LIVE CAMERA"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  minimumSize: const Size.fromHeight(50),
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _isListening ? null : _voiceAsk,
+                icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                label: Text(_isListening ? "LISTENING..." : "VOICE ASK + SCAN"),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (_lastResult != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: _lastResult!.state == ConfidenceState.verified
+                        ? AppColors.success
+                        : _lastResult!.state == ConfidenceState.conflict
+                            ? AppColors.danger
+                            : AppColors.warning,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    _lastResult!.message,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              const SizedBox(height: 16),
+              const Text(
+                "EVIDENCE",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 300,
+                child: _activeEvidence.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Text(
+                            "No evidence scanned yet. Run a query or scan.",
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _activeEvidence.length,
+                        itemBuilder: (context, index) {
+                          final item = _activeEvidence[index];
+                          return EvidenceCard(
+                            evidence: item,
+                            state: _lastResult?.state ?? ConfidenceState.verified,
+                          );
+                        },
+                      ),
+              ),
+            ],
           ),
-          const SizedBox(height: 80), // Space for FAB
-          ],
         ),
       ),
     );
