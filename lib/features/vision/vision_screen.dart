@@ -63,12 +63,23 @@ class _VisionScreenState extends State<VisionScreen> {
   }
 
   Future<void> _toggleTorch() async {
-    if (_isTorchOn) {
-      await _torchService.turnOff();
-    } else {
-      await _torchService.turnOn();
+    final nextState = !_isTorchOn;
+    try {
+      if (_isCameraInitialized && _cameraController != null) {
+        await _cameraController!.setFlashMode(
+          nextState ? FlashMode.torch : FlashMode.off,
+        );
+      } else {
+        if (nextState) {
+          await _torchService.turnOn();
+        } else {
+          await _torchService.turnOff();
+        }
+      }
+      setState(() => _isTorchOn = nextState);
+    } catch (e) {
+      // Fallback handling if flash unavailable
     }
-    setState(() => _isTorchOn = !_isTorchOn);
   }
 
   Future<void> _processVerification(EvidenceBundle bundle, String query) async {
