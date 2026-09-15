@@ -4,6 +4,7 @@ import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
+import '../../shared/theme/app_theme.dart';
 
 class CommunicationScreen extends StatefulWidget {
   const CommunicationScreen({super.key});
@@ -177,18 +178,16 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("TheOne — Communication Assist"),
-        backgroundColor: Colors.teal[900],
+        title: const Text("COMMUNICATION ASSIST"),
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
-          indicatorColor: Colors.tealAccent,
           tabs: const [
-            Tab(icon: Icon(Icons.forum), text: "Quick Phrases"),
-            Tab(icon: Icon(Icons.camera_alt), text: "Photo Assist"),
-            Tab(icon: Icon(Icons.auto_fix_high), text: "Intent Engine"),
-            Tab(icon: Icon(Icons.hearing), text: "Capture Reply"),
-            Tab(icon: Icon(Icons.sign_language), text: "Sign Dictionary"),
+            Tab(icon: Icon(Icons.forum), text: "Phrases"),
+            Tab(icon: Icon(Icons.camera_alt), text: "Photo"),
+            Tab(icon: Icon(Icons.auto_fix_high), text: "Intent"),
+            Tab(icon: Icon(Icons.hearing), text: "Reply"),
+            Tab(icon: Icon(Icons.sign_language), text: "Signs"),
           ],
         ),
       ),
@@ -210,29 +209,41 @@ class _CommunicationScreenState extends State<CommunicationScreen>
       children: [
         Padding(
           padding: const EdgeInsets.all(12.0),
-          child: Row(
+          child: Column(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _customPhraseController,
-                  decoration: const InputDecoration(
-                    hintText: "Add custom quick phrase...",
-                    border: OutlineInputBorder(),
-                  ),
+              const Text(
+                "TAP TO SPEAK",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
                 ),
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[800]),
-                onPressed: () {
-                  if (_customPhraseController.text.trim().isNotEmpty) {
-                    setState(() {
-                      _customPhrases.add(_customPhraseController.text.trim());
-                      _customPhraseController.clear();
-                    });
-                  }
-                },
-                child: const Text("Add", style: TextStyle(color: Colors.white)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _customPhraseController,
+                      decoration: const InputDecoration(
+                        hintText: "Add custom quick phrase...",
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (_customPhraseController.text.trim().isNotEmpty) {
+                        setState(() {
+                          _customPhrases.add(_customPhraseController.text.trim());
+                          _customPhraseController.clear();
+                        });
+                      }
+                    },
+                    child: const Text("Add"),
+                  ),
+                ],
               ),
             ],
           ),
@@ -245,7 +256,7 @@ class _CommunicationScreenState extends State<CommunicationScreen>
               _buildCategorySection("Café & Food", _foodPhrases),
               _buildCategorySection("Emergency & Navigation", _emergencyPhrases),
               if (_customPhrases.isNotEmpty) ...[
-                const Text("Custom Phrases", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal)),
+                const Text("Custom Phrases", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -254,6 +265,7 @@ class _CommunicationScreenState extends State<CommunicationScreen>
                       .map((p) => ActionChip(
                             avatar: const Icon(Icons.volume_up, size: 16),
                             label: Text(p),
+                            backgroundColor: const Color(0xFFE8EEF7),
                             onPressed: () => _speakPhrase(p),
                           ))
                       .toList(),
@@ -270,16 +282,16 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal)),
+        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: phrases.map((p) {
             return ActionChip(
-              avatar: const Icon(Icons.volume_up, size: 16, color: Colors.teal),
+              avatar: const Icon(Icons.volume_up, size: 16, color: AppColors.primary),
               label: Text(p['label']!),
-              backgroundColor: Colors.teal[50],
+              backgroundColor: const Color(0xFFE8EEF7),
               onPressed: () => _speakPhrase(p['text']!),
             );
           }).toList(),
@@ -295,37 +307,67 @@ class _CommunicationScreenState extends State<CommunicationScreen>
         Container(
           height: 200,
           width: double.infinity,
-          color: Colors.black,
+          margin: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.primaryDark, width: 3),
+          ),
           child: _isCameraInitialized && _cameraController != null
-              ? CameraPreview(_cameraController!)
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: CameraPreview(_cameraController!),
+                )
               : const Center(child: Text("Camera Preview", style: TextStyle(color: Colors.white))),
         ),
         Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[800]),
             onPressed: _analyzePhotoForPhrases,
-            icon: const Icon(Icons.camera_enhance, color: Colors.white),
-            label: const Text("Photograph Menu / Sign for Suggestions", style: TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.camera_enhance),
+            label: const Text("SCAN MENU / SIGN"),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
           ),
         ),
+        const SizedBox(height: 12),
         Expanded(
           child: _cameraSuggestedPhrases.isEmpty
-              ? const Center(child: Text("Point camera at a menu or sign and tap analyze."))
+              ? const Center(child: Text("Point camera at a menu or sign and tap analyze.", style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)))
               : ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   itemCount: _cameraSuggestedPhrases.length,
                   itemBuilder: (context, index) {
                     final p = _cameraSuggestedPhrases[index];
-                    return Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.lightbulb, color: Colors.amber),
-                        title: Text(p['label']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(p['text']!),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.volume_up, color: Colors.teal),
-                          onPressed: () => _speakPhrase(p['text']!),
-                        ),
+                    return Container(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lightbulb, color: AppColors.warning),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(p['label']!, style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                                const SizedBox(height: 4),
+                                Text(p['text']!, style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.volume_up, color: AppColors.primary),
+                            onPressed: () => _speakPhrase(p['text']!),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -342,54 +384,55 @@ class _CommunicationScreenState extends State<CommunicationScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Code-Mixed Intent Converter",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            "INTENT → SPEECH",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
           ),
           const SizedBox(height: 8),
           const Text(
-            "Type rough Tamil/English input (e.g., 'registration enga irukku nu kekkanum') and transform it into a polite, full spoken sentence.",
-            style: TextStyle(color: Colors.grey),
+            "Type rough Tamil/English. App makes a clear sentence.",
+            style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _intentInputController,
             decoration: const InputDecoration(
               hintText: "Type rough text here...",
-              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[800]),
             onPressed: _reformatIntentToSpeech,
-            icon: const Icon(Icons.auto_fix_high, color: Colors.white),
-            label: const Text("Transform to Polite Sentence", style: TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.auto_fix_high),
+            label: const Text("TRANSFORM"),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
           ),
           const SizedBox(height: 20),
           if (_reformattedSentence.isNotEmpty)
-            Card(
-              color: Colors.teal[50],
-              shape: RoundedRectangleBorder(
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Colors.teal),
+                border: Border.all(color: AppColors.primary, width: 2),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Clean Natural Spoken Sentence:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-                    const SizedBox(height: 8),
-                    Text(_reformattedSentence, style: const TextStyle(fontSize: 18)),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[900]),
-                      onPressed: () => _speakPhrase(_reformattedSentence),
-                      icon: const Icon(Icons.volume_up, color: Colors.white),
-                      label: const Text("Speak Sentence Aloud", style: TextStyle(color: Colors.white)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Result:", style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  Text(_reformattedSentence, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => _speakPhrase(_reformattedSentence),
+                    icon: const Icon(Icons.volume_up),
+                    label: const Text("SPEAK"),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
         ],
@@ -403,48 +446,51 @@ class _CommunicationScreenState extends State<CommunicationScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.hearing, size: 64, color: Colors.teal),
+          const Icon(Icons.hearing, size: 64, color: AppColors.primary),
           const SizedBox(height: 16),
           const Text(
-            "Capture Other Person's Reply",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            "LISTEN TO THEIR REPLY",
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
           ),
           const SizedBox(height: 8),
           const Text(
-            "Press the button below and hold your phone towards the vendor or person speaking to transcribe their reply on screen.",
+            "Hold phone towards person speaking to transcribe their reply.",
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: _isListeningToReply ? Colors.red[700] : Colors.teal[800],
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              backgroundColor: _isListeningToReply ? AppColors.danger : AppColors.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              minimumSize: const Size.fromHeight(56),
             ),
             onPressed: _isListeningToReply ? null : _listenToReply,
             icon: Icon(_isListeningToReply ? Icons.mic : Icons.mic_none, color: Colors.white),
             label: Text(
-              _isListeningToReply ? "Listening..." : "Listen for Response",
-              style: const TextStyle(color: Colors.white, fontSize: 16),
+              _isListeningToReply ? "LISTENING..." : "LISTEN",
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
             ),
           ),
           const SizedBox(height: 24),
           if (_lastOtherPersonReply.isNotEmpty)
-            Card(
-              elevation: 3,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    const Text("Spoken Reply Transcribed:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-                    const SizedBox(height: 8),
-                    Text(
-                      '"$_lastOtherPersonReply"',
-                      style: const TextStyle(fontSize: 20, fontStyle: FontStyle.italic),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary, width: 2),
+              ),
+              child: Column(
+                children: [
+                  const Text("Reply:", style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  const SizedBox(height: 12),
+                  Text(
+                    '"$_lastOtherPersonReply"',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             ),
         ],
@@ -468,24 +514,41 @@ class _CommunicationScreenState extends State<CommunicationScreen>
             decoration: const InputDecoration(
               hintText: "Search Sign Language Dictionary...",
               prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
             ),
           ),
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             itemCount: filtered.length,
             itemBuilder: (context, index) {
               final item = filtered[index];
-              return Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.teal[100],
-                    child: const Icon(Icons.sign_language, color: Colors.teal),
-                  ),
-                  title: Text(item['sign']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text("${item['category']} — ${item['description']}"),
+              return Container(
+                margin: const EdgeInsets.symmetric(vertical: 6),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: AppColors.primary,
+                      child: const Icon(Icons.sign_language, color: Colors.white),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item['sign']!, style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                          const SizedBox(height: 4),
+                          Text(item['description']!, style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               );
             },

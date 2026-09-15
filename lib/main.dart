@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'shared/widgets/app_shell.dart';
+import 'shared/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,13 +24,7 @@ class TheOneApp extends StatelessWidget {
     return MaterialApp(
       title: 'TheOne Accessibility Assistant',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.light,
-        ),
-      ),
+      theme: AppTheme.light(),
       home: const AppShell(),
     );
   }

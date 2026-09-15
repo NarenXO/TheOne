@@ -18,6 +18,7 @@ import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/torch_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/storage/session_storage.dart';
+import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/evidence_card.dart';
 import 'vision_pipeline.dart';
 
@@ -261,8 +262,7 @@ class _VisionScreenState extends State<VisionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("TheOne — Vision Assist"),
-        backgroundColor: Colors.black87,
+        title: const Text("VISION ASSIST"),
         actions: [
           IconButton(
             icon: Icon(_isTorchOn ? Icons.flash_on : Icons.flash_off),
@@ -287,142 +287,244 @@ class _VisionScreenState extends State<VisionScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Camera Preview Box
-          Container(
-            height: 220,
-            width: double.infinity,
-            color: Colors.black,
-            child: _isCameraInitialized && _cameraController != null
-                ? CameraPreview(_cameraController!)
-                : Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.camera_alt, color: Colors.grey, size: 48),
-                        const SizedBox(height: 8),
-                        Text(
-                          _cameraErrorMsg.isEmpty ? "Camera Active / Standby Mode" : _cameraErrorMsg,
-                          style: const TextStyle(color: Colors.white70),
-                          textAlign: TextAlign.center,
-                        ),
-                        if (_cameraErrorMsg.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          ElevatedButton(
-                            onPressed: _initCamera,
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700]),
-                            child: const Text("ENABLE PERMISSIONS / RETRY CAMERA", style: TextStyle(color: Colors.white)),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-          ),
-          // Status Banner
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+          // Feature Banner
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            color: Colors.blueGrey[100],
-            child: Text(
-              _statusLine,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            padding: const EdgeInsets.all(12),
+            color: AppColors.primary,
+            child: const Text(
+              "Camera • OCR • Objects • Evidence Engine",
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
               textAlign: TextAlign.center,
             ),
           ),
-
-          // Query & Demo Controls
+          // Camera Preview Box
+          Container(
+            height: 210,
+            width: double.infinity,
+            margin: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.primaryDark, width: 3),
+            ),
+            child: _isCameraInitialized && _cameraController != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: CameraPreview(_cameraController!),
+                  )
+                : Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.camera_alt, color: AppColors.textSecondary, size: 40),
+                          const SizedBox(height: 8),
+                          const Text(
+                            "CAMERA NOT READY",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _cameraErrorMsg.isEmpty ? "Camera initializing..." : _cameraErrorMsg,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          if (_cameraErrorMsg.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            ElevatedButton(
+                              onPressed: _initCamera,
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(40),
+                              ),
+                              child: const Text("RETRY CAMERA"),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
+          // Status Strip
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2E8F0),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              _statusLine,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Query Field
           Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: TextField(
+              controller: _queryController,
+              decoration: const InputDecoration(
+                labelText: "Ask a question (Tamil / English)",
+                prefixIcon: Icon(Icons.question_answer),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Button Row 1
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
               children: [
-                TextField(
-                  controller: _queryController,
-                  decoration: const InputDecoration(
-                    labelText: "Voice Query (Tamil / English)",
-                    prefixIcon: Icon(Icons.mic),
-                    border: OutlineInputBorder(),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _scanLiveCamera,
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text("SCAN LIVE"),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700]),
-                        onPressed: _runVerifiedDemo,
-                        icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-                        label: const Text("DEMO: Verify 204", style: TextStyle(color: Colors.white)),
-                      ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isListening ? null : _startVoiceInput,
+                    icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                    label: Text(_isListening ? "LISTENING..." : "VOICE"),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700]),
-                        onPressed: _runConflictDemo,
-                        icon: const Icon(Icons.warning_amber_outlined, color: Colors.white),
-                        label: const Text("DEMO: Conflict 204/302", style: TextStyle(color: Colors.white)),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  "Demo buttons inject sample evidence for judges. Live scan uses real camera.",
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700]),
-                        onPressed: _scanLiveCamera,
-                        icon: const Icon(Icons.camera_alt, color: Colors.white),
-                        label: const Text("SCAN LIVE CAMERA", style: TextStyle(color: Colors.white)),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: _isListening ? Colors.orange[700] : Colors.purple[700]),
-                        onPressed: _isListening ? null : _startVoiceInput,
-                        icon: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white),
-                        label: Text(_isListening ? "Listening..." : "Voice Input", style: const TextStyle(color: Colors.white)),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
           ),
-
-          // Verification Status Banner
+          const SizedBox(height: 8),
+          // Button Row 2
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _runVerifiedDemo,
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text("DEMO VERIFY 204"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryDark,
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _runConflictDemo,
+                    icon: const Icon(Icons.warning_amber_outlined),
+                    label: const Text("DEMO CONFLICT"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.danger,
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Helper Text
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: const Text(
+              "Live scan uses real camera. Demo buttons show engine states for judges.",
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Result Banner
           if (_lastResult != null)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               margin: const EdgeInsets.symmetric(horizontal: 12),
-              color: _lastResult!.state == ConfidenceState.verified
-                  ? Colors.green[100]
-                  : _lastResult!.state == ConfidenceState.conflict
-                      ? Colors.red[100]
-                      : Colors.amber[100],
+              decoration: BoxDecoration(
+                color: _lastResult!.state == ConfidenceState.verified
+                    ? AppColors.success
+                    : _lastResult!.state == ConfidenceState.conflict
+                        ? AppColors.danger
+                        : AppColors.warning,
+                borderRadius: BorderRadius.circular(10),
+              ),
               child: Text(
                 _lastResult!.message,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
                 textAlign: TextAlign.center,
               ),
             ),
-
+          const SizedBox(height: 8),
+          // Evidence Section
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              "EVIDENCE",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           // Evidence Cards Feed
-          Expanded(
+          SizedBox(
+            height: 300,
             child: _activeEvidence.isEmpty
                 ? const Center(
-                    child: Text("No evidence scanned yet. Run a query or demo."),
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text(
+                        "No evidence scanned yet. Run a query or demo.",
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   )
                 : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: _activeEvidence.length,
                     itemBuilder: (context, index) {
                       final item = _activeEvidence[index];
@@ -433,7 +535,9 @@ class _VisionScreenState extends State<VisionScreen> {
                     },
                   ),
           ),
-        ],
+          const SizedBox(height: 80), // Space for FAB
+          ],
+        ),
       ),
     );
   }
