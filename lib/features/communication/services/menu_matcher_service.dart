@@ -1,5 +1,5 @@
-import '../../../core/models/confidence_state.dart';
-import '../../../core/services/ocr_service.dart';
+import 'package:theone/core/models/confidence_state.dart';
+import 'package:theone/core/services/ocr_service.dart';
 import '../models/intent_result.dart';
 
 class MenuMatcherService {

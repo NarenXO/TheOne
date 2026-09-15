@@ -1,3 +1,4 @@
+import 'package:theone/core/models/confidence_state.dart';
 import 'package:flutter/material.dart';
 import '../../models/sign_recognition_candidate.dart';
 import '../../services/mock_communication_services.dart';

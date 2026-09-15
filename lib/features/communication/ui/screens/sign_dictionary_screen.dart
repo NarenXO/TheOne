@@ -1,3 +1,4 @@
+import 'sign_detail_screen.dart';
 import 'package:flutter/material.dart';
 import '../../models/sign_entry.dart';
 import '../../data/sign_repository.dart';

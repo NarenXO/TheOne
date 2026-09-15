@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../core/models/confidence_state.dart';
-import '../../../core/services/speech_input_service.dart';
+import 'package:theone/core/models/confidence_state.dart';
+import 'package:theone/core/services/speech_input_service.dart';
 import '../../services/translation_service.dart';
 import '../widgets/confidence_badge.dart';
 import '../widgets/mock_banner.dart';

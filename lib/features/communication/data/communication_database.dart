@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../models/phrase_item.dart';
+import 'package:theone/features/communication/models/phrase_item.dart';
 
 class CommunicationDatabase {
   static final CommunicationDatabase _instance = CommunicationDatabase._internal();

@@ -1,5 +1,5 @@
-import '../../../core/models/confidence_state.dart';
-import '../models/phrase_item.dart';
+import 'package:theone/core/models/confidence_state.dart';
+import 'package:theone/features/communication/models/phrase_item.dart';
 
 class TranslationService {
   static const Map<String, String> _wordTranslations = {

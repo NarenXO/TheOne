@@ -1,4 +1,4 @@
-import '../../../core/models/confidence_state.dart';
+import 'package:theone/core/models/confidence_state.dart';
 
 enum Intent {
   askLocation,

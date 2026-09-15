@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../core/models/confidence_state.dart';
-import '../../../core/services/ocr_service.dart';
+import 'package:theone/core/models/confidence_state.dart';
+import 'package:theone/core/services/ocr_service.dart';
 import '../../models/intent_result.dart';
 import '../../services/menu_matcher_service.dart';
 import '../widgets/confidence_badge.dart';

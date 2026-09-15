@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
-import '../models/phrase_item.dart';
+import 'package:theone/features/communication/models/phrase_item.dart';
 import 'communication_database.dart';
 
 class PhraseRepository {

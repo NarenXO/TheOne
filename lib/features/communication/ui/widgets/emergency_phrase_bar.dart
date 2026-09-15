@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/phrase_item.dart';
+import 'package:theone/features/communication/models/phrase_item.dart';
 
 class EmergencyPhraseBar extends StatelessWidget {
   final List<PhraseItem> emergencyPhrases;

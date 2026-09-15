@@ -1,13 +1,13 @@
-import '../models/phrase_item.dart';
-import '../models/intent_result.dart';
-import '../services/communication_tts_service.dart';
-import '../services/intent_parser_service.dart';
-import '../services/menu_matcher_service.dart';
-import '../services/translation_service.dart';
-import '../data/phrase_repository.dart';
-import '../data/sign_repository.dart';
-import '../../../core/services/ocr_service.dart';
-import '../../../core/services/speech_input_service.dart';
+import 'models/phrase_item.dart';
+import 'models/intent_result.dart';
+import 'services/communication_tts_service.dart';
+import 'services/intent_parser_service.dart';
+import 'services/menu_matcher_service.dart';
+import 'services/translation_service.dart';
+import 'data/phrase_repository.dart';
+import 'data/sign_repository.dart';
+import 'package:theone/core/services/ocr_service.dart';
+import 'package:theone/core/services/speech_input_service.dart';
 
 class CommunicationController {
   final PhraseRepository _phraseRepository;

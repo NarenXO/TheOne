@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/models/confidence_state.dart';
+import 'package:theone/core/models/confidence_state.dart';
 
 class ConfidenceBadge extends StatelessWidget {
   final ConfidenceState state;

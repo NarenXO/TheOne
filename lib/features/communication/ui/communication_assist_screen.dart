@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import '../../communication_controller.dart';
-import '../widgets/emergency_phrase_bar.dart';
-import '../widgets/mock_banner.dart';
-import '../widgets/accessible_button.dart';
-import 'phrase_board_screen.dart';
-import 'intent_composer_screen.dart';
-import 'menu_ocr_assist_screen.dart';
-import 'spoken_reply_screen.dart';
-import 'sign_dictionary_screen.dart';
-import 'sign_camera_screen.dart';
+import 'package:theone/features/communication/communication_controller.dart';
+import 'package:theone/features/communication/ui/widgets/emergency_phrase_bar.dart';
+import 'package:theone/features/communication/ui/widgets/mock_banner.dart';
+import 'package:theone/features/communication/ui/widgets/accessible_button.dart';
+import 'screens/phrase_board_screen.dart';
+import 'screens/intent_composer_screen.dart';
+import 'screens/menu_ocr_assist_screen.dart';
+import 'screens/spoken_reply_screen.dart';
+import 'screens/sign_dictionary_screen.dart';
+import 'screens/sign_camera_screen.dart';
 
 class CommunicationAssistScreen extends StatefulWidget {
   const CommunicationAssistScreen({super.key});

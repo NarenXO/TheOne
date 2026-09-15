@@ -1,6 +1,6 @@
 import '../models/intent_result.dart';
 import '../services/tamil_english_normalizer.dart';
-import '../../../core/models/confidence_state.dart';
+import 'package:theone/core/models/confidence_state.dart';
 
 class IntentParserService {
   IntentResult parse(String input) {

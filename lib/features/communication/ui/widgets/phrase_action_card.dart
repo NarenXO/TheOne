@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../core/models/confidence_state.dart';
-import '../models/phrase_item.dart';
+import 'package:theone/core/models/confidence_state.dart';
+import 'package:theone/features/communication/models/phrase_item.dart';
 
 class PhraseActionCard extends StatelessWidget {
   final PhraseItem phrase;
