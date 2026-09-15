@@ -39,7 +39,6 @@ class _VisionScreenState extends State<VisionScreen> {
   final _ttsService = TtsServiceImpl();
   final _hapticService = HapticServiceImpl();
   final _torchService = TorchServiceImpl();
-  final _speechService = SpeechInputServiceImpl();
   final _zeroAssumptionEngine = ZeroAssumptionEngine();
   final _relevanceEngine = RelevanceEngine();
   final _sessionStorage = SessionStorage();
@@ -49,6 +48,7 @@ class _VisionScreenState extends State<VisionScreen> {
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
   final TextEditingController _queryController = TextEditingController(text: "Room 204 enga irukku?");
+  // ignore: prefer_final_fields
   bool _isListening = false;
   String _statusLine = 'Ready';
 
@@ -138,14 +138,24 @@ class _VisionScreenState extends State<VisionScreen> {
 
     setState(() {
       _lastResult = result;
-      _activeEvidence = rankedItems;
+      _activeEvidence = bundle.items; // Always show original bundle items
     });
 
     for (final e in rankedItems) {
       await _sessionStorage.saveEvidence(e);
     }
 
+    // Always speak result.message
     await _ttsService.speak(result.message);
+
+    // If result is weak but we have OCR text, speak it
+    if (result.state == ConfidenceState.insufficient || result.state == ConfidenceState.uncertain) {
+      final ocrText = bundle.items.where((e) => e.type.name == 'ocr').map((e) => e.value).toList();
+      if (ocrText.isNotEmpty) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _ttsService.speak("I can read: ${ocrText.take(2).join(', ')}");
+      }
+    }
 
     switch (result.state) {
       case ConfidenceState.verified:
@@ -192,14 +202,18 @@ class _VisionScreenState extends State<VisionScreen> {
     _processVerification(bundle, _queryController.text);
   }
 
-  Future<void> _startVoiceInput() async {
-    setState(() => _isListening = true);
-    final result = await _speechService.listen();
-    setState(() => _isListening = false);
-
-    if (result.text.isNotEmpty) {
-      _queryController.text = result.text;
+  Future<void> _voiceAsk() async {
+    setState(() => _statusLine = 'Listening... speak now');
+    final speech = SpeechInputServiceImpl();
+    final result = await speech.listen();
+    if (result.text.trim().isEmpty) {
+      setState(() => _statusLine = 'No speech heard. Try again.');
+      await _ttsService.speak('I did not catch that. Please try again.');
+      return;
     }
+    _queryController.text = result.text;
+    setState(() => _statusLine = 'Heard: ${result.text}');
+    await _scanLiveCamera(); // scan after question
   }
 
   Future<void> _scanLiveCamera() async {
@@ -242,7 +256,7 @@ class _VisionScreenState extends State<VisionScreen> {
       setState(() {
         _statusLine = _visionPipeline.isTorchAutoOn
             ? 'Low light detected — torch ON automatically'
-            : 'Scan complete (brightness ${(brightness * 100).toStringAsFixed(0)}%)';
+            : 'Scan complete (brightness ${(brightness * 100).toStringAsFixed(0)}%) — torch OFF';
       });
     } catch (e) {
       setState(() => _statusLine = 'Scan failed: $e');
@@ -307,7 +321,7 @@ class _VisionScreenState extends State<VisionScreen> {
           ),
           // Camera Preview Box
           Container(
-            height: 210,
+            height: 320,
             width: double.infinity,
             margin: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -318,7 +332,12 @@ class _VisionScreenState extends State<VisionScreen> {
             child: _isCameraInitialized && _cameraController != null
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(10),
-                    child: CameraPreview(_cameraController!),
+                    child: SizedBox.expand(
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        child: CameraPreview(_cameraController!),
+                      ),
+                    ),
                   )
                 : Center(
                     child: Padding(
@@ -410,9 +429,9 @@ class _VisionScreenState extends State<VisionScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _isListening ? null : _startVoiceInput,
+                    onPressed: _isListening ? null : _voiceAsk,
                     icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                    label: Text(_isListening ? "LISTENING..." : "VOICE"),
+                    label: Text(_isListening ? "LISTENING..." : "VOICE ASK"),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
                     ),

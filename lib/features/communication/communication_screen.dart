@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
@@ -25,7 +26,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
 
   final TextEditingController _customPhraseController = TextEditingController();
   final TextEditingController _intentInputController = TextEditingController();
-  final TextEditingController _signSearchController = TextEditingController();
 
   String _lastOtherPersonReply = "";
   bool _isListeningToReply = false;
@@ -55,24 +55,19 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   final List<String> _customPhrases = [];
   List<Map<String, String>> _cameraSuggestedPhrases = [];
 
-  // Sign Language Dictionary Items
-  final List<Map<String, String>> _signDictionary = [
-    {"sign": "Thank You", "category": "Basic", "description": "Flat hand touches chin, then moves forward towards person."},
-    {"sign": "Hello / Wave", "category": "Basic", "description": "Open hand raised near temple, wave outwards gently."},
-    {"sign": "Help", "category": "Emergency", "description": "Closed fist with thumb up placed on flat palm of other hand."},
-    {"sign": "Please", "category": "Basic", "description": "Flat hand rubbed in circular motion over chest."},
-    {"sign": "Water", "category": "Food", "description": "'W' hand shape tapped against chin twice."},
-    {"sign": "Emergency", "category": "Emergency", "description": "Hand shaped as 'E' shaken gently side to side."},
-  ];
-
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _initCamera();
   }
 
   Future<void> _initCamera() async {
+    final cam = await Permission.camera.request();
+    if (!cam.isGranted) {
+      setState(() => _isCameraInitialized = false);
+      return;
+    }
     try {
       final cameras = await availableCameras();
       if (cameras.isNotEmpty) {
@@ -94,7 +89,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     _ocrService.dispose();
     _customPhraseController.dispose();
     _intentInputController.dispose();
-    _signSearchController.dispose();
     super.dispose();
   }
 
@@ -147,31 +141,69 @@ class _CommunicationScreenState extends State<CommunicationScreen>
 
   // Code-Mixed Intent-to-Speech Transformer
   void _reformatIntentToSpeech() {
-    final input = _intentInputController.text.trim().toLowerCase();
+    final input = _intentInputController.text.trim();
+    final lower = input.toLowerCase();
     if (input.isEmpty) return;
 
-    String cleanSentence = "";
-    if (input.contains("registration") || input.contains("enga") || input.contains("kekkanum")) {
-      cleanSentence = "Excuse me, could you please tell me where the registration desk is located?";
-    } else if (input.contains("chai") || input.contains("venum") || input.contains("tea")) {
-      cleanSentence = "Excuse me, I would like to order a tea, please.";
-    } else if (input.contains("toilet") || input.contains("restroom")) {
-      cleanSentence = "Could you please show me where the nearest restroom is?";
+    String out;
+    if (lower.contains('registration') || lower.contains('rega') || lower.contains('pativu') || lower.contains('enga irukku') || lower.contains('kekkanum')) {
+      out = 'Excuse me, could you please tell me where the registration desk is?';
+    } else if (lower.contains('toilet') || lower.contains('restroom') || lower.contains('washroom') || lower.contains('kuzhi') || lower.contains('kazi')) {
+      out = 'Excuse me, could you please tell me where the restroom is?';
+    } else if (lower.contains('water') || lower.contains('thanni') || lower.contains('tanni')) {
+      out = 'Could I please get a bottle of water?';
+    } else if (lower.contains('chai') || lower.contains('tea') || lower.contains('coffee') || lower.contains('kaapi')) {
+      out = 'I would like a medium chai, please.';
+    } else if (lower.contains('bill') || lower.contains('check') || lower.contains('hisab')) {
+      out = 'Could you please bring the bill?';
+    } else if (lower.contains('help') || lower.contains('udavi') || lower.contains('emergency')) {
+      out = 'I need help, please. It is urgent.';
+    } else if (lower.contains('name') || lower.contains('per')) {
+      out = 'Hello, could you please tell me your name?';
+    } else if (lower.contains('price') || lower.contains('cost') || lower.contains('evlo') || lower.contains('how much')) {
+      out = 'Excuse me, how much does this cost?';
+    } else if (lower.contains('room') && RegExp(r'\d{2,4}').hasMatch(lower)) {
+      final n = RegExp(r'\d{2,4}').firstMatch(lower)!.group(0);
+      out = 'Excuse me, could you please guide me to room $n?';
+    } else if (lower.contains('exit') || lower.contains('veliyil') || lower.contains('way out')) {
+      out = 'Excuse me, could you please show me the exit?';
+    } else if (lower.contains('hello') || lower.contains('hi ') || lower == 'hi') {
+      out = 'Hello, how are you?';
+    } else if (lower.contains('thanks') || lower.contains('thank you') || lower.contains('nandri')) {
+      out = 'Thank you so much for your help.';
     } else {
-      cleanSentence = "Excuse me, $input";
+      // Clean generic fallback: polish fragment, don't dump raw only
+      out = 'Excuse me, $input.';
+      if (!out.trim().endsWith('.') && !out.trim().endsWith('?')) out = '$out.';
     }
 
-    setState(() => _reformattedSentence = cleanSentence);
+    setState(() => _reformattedSentence = out);
   }
 
   // Capture other person's spoken response
   Future<void> _listenToReply() async {
-    setState(() => _isListeningToReply = true);
-    final result = await _speechService.listen();
     setState(() {
-      _lastOtherPersonReply = result.text.isNotEmpty ? result.text : "No speech detected.";
-      _isListeningToReply = false;
+      _isListeningToReply = true;
+      _lastOtherPersonReply = 'Listening... please ask them to speak clearly';
     });
+    try {
+      final result = await _speechService.listen();
+      final text = result.text.trim();
+      setState(() {
+        _lastOtherPersonReply = text.isEmpty
+            ? 'No speech detected. Tap again and ask them to speak louder.'
+            : text;
+        _isListeningToReply = false;
+      });
+      if (text.isNotEmpty) {
+        await _ttsService.speak('They said: $text');
+      }
+    } catch (e) {
+      setState(() {
+        _lastOtherPersonReply = 'Mic error: $e';
+        _isListeningToReply = false;
+      });
+    }
   }
 
   @override
@@ -187,7 +219,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
             Tab(icon: Icon(Icons.camera_alt), text: "Photo"),
             Tab(icon: Icon(Icons.auto_fix_high), text: "Intent"),
             Tab(icon: Icon(Icons.hearing), text: "Reply"),
-            Tab(icon: Icon(Icons.sign_language), text: "Signs"),
           ],
         ),
       ),
@@ -198,7 +229,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
           _buildPhotoAssistTab(),
           _buildIntentTab(),
           _buildCaptureReplyTab(),
-          _buildSignDictionaryTab(),
         ],
       ),
     );
@@ -305,7 +335,7 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     return Column(
       children: [
         Container(
-          height: 200,
+          height: 280,
           width: double.infinity,
           margin: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -498,63 +528,4 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     );
   }
 
-  Widget _buildSignDictionaryTab() {
-    final query = _signSearchController.text.toLowerCase();
-    final filtered = _signDictionary.where((s) {
-      return s['sign']!.toLowerCase().contains(query) || s['category']!.toLowerCase().contains(query);
-    }).toList();
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: TextField(
-            controller: _signSearchController,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              hintText: "Search Sign Language Dictionary...",
-              prefixIcon: Icon(Icons.search),
-            ),
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: filtered.length,
-            itemBuilder: (context, index) {
-              final item = filtered[index];
-              return Container(
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: AppColors.primary,
-                      child: const Icon(Icons.sign_language, color: Colors.white),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(item['sign']!, style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                          const SizedBox(height: 4),
-                          Text(item['description']!, style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
 }

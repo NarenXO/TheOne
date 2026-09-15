@@ -49,6 +49,7 @@ class _HearingScreenState extends State<HearingScreen> {
   bool _isPaused = false;
   bool _isAmbientDangerActive = false;
   String? _dangerAlertMessage;
+  int _emptyListenCount = 0;
 
   int _currentSpeakerIndex = 1;
   final List<Color> _speakerColors = [
@@ -79,12 +80,24 @@ class _HearingScreenState extends State<HearingScreen> {
     if (_isListening) return;
 
     setState(() => _isListening = true);
+    _emptyListenCount = 0;
 
     while (_isListening && mounted) {
       if (!_isPaused) {
         final speechResult = await _speechService.listen();
         if (speechResult.text.trim().isNotEmpty) {
           _processSpeechInput(speechResult.text, speechResult.confidence);
+          _emptyListenCount = 0;
+        } else {
+          _emptyListenCount++;
+          if (_emptyListenCount >= 2) {
+            setState(() {
+              _isListening = false;
+              _emptyListenCount = 0;
+            });
+            await _speechService.stop();
+            return;
+          }
         }
       } else {
         await Future.delayed(const Duration(seconds: 1));
@@ -131,6 +144,11 @@ class _HearingScreenState extends State<HearingScreen> {
 
     _scrollToBottom();
 
+    // Light haptic on non-empty captions
+    if (text.isNotEmpty) {
+      await _hapticService.uncertain();
+    }
+
     // Create Evidence & Save
     final evidence = Evidence(
       source: EvidenceSource.microphone,
@@ -173,9 +191,9 @@ class _HearingScreenState extends State<HearingScreen> {
         title: const Text("HEARING ASSIST"),
         actions: [
           IconButton(
-            icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
+            icon: Icon(_isPaused ? Icons.play_circle_outline : Icons.pause_circle_outline),
             onPressed: () => setState(() => _isPaused = !_isPaused),
-            tooltip: _isPaused ? "Resume Captions" : "Freeze / Pause Captions",
+            tooltip: _isPaused ? "Resume captions" : "Freeze captions",
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
@@ -277,12 +295,12 @@ class _HearingScreenState extends State<HearingScreen> {
                     ),
                   ),
                   child: Text(
-                    _isListening ? (_isPaused ? "PAUSED" : "LIVE") : "OFFLINE",
+                    _isListening ? (_isPaused ? "PAUSED" : "LIVE") : (_emptyListenCount > 0 ? "CAPTIONS AUTO-STOPPED (SILENCE)" : "OFFLINE"),
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
                       color: _isListening
                           ? (_isPaused ? AppColors.warning : AppColors.success)
-                          : AppColors.textSecondary,
+                          : (_emptyListenCount > 0 ? AppColors.warning : AppColors.textSecondary),
                       fontSize: 12,
                     ),
                   ),

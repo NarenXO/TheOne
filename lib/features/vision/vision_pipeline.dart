@@ -26,45 +26,53 @@ class VisionPipeline {
   bool get isTorchAutoOn => _torchAutoOn;
 
   /// Estimate brightness 0.0..1.0 from YUV/NV21 or JPEG bytes.
-  /// Simple average luminance heuristic.
+  /// Better heuristic with hysteresis support.
   double estimateBrightnessFromBytes(Uint8List bytes) {
-    if (bytes.isEmpty) return 0.8;
-    // Sample every Nth byte for speed
-    final step = (bytes.length / 2000).ceil().clamp(1, 50);
+    if (bytes.isEmpty) return 1.0;
+    // For JPEG/PNG bytes this is approximate; sample mid-file payload heavily
+    final start = (bytes.length * 0.15).toInt();
+    final end = (bytes.length * 0.85).toInt();
+    if (end <= start) return 1.0;
     var sum = 0;
     var count = 0;
-    for (var i = 0; i < bytes.length; i += step) {
+    final step = ((end - start) / 3000).ceil().clamp(1, 100);
+    for (var i = start; i < end; i += step) {
       sum += bytes[i];
       count++;
     }
-    if (count == 0) return 0.8;
-    return (sum / count / 255.0).clamp(0.0, 1.0);
+    if (count == 0) return 1.0;
+    final avg = sum / count / 255.0;
+    // Bias darker because JPEG headers inflate averages
+    return (avg * 0.85).clamp(0.0, 1.0);
   }
 
   Future<bool> applyAutoTorch({
     required double brightness,
     required CameraController? cameraController,
   }) async {
-    final low = EvidenceThresholds.isLowLight(brightness);
+    // Add hysteresis to prevent flickering
+    final veryLow = brightness < EvidenceThresholds.lowLightBrightness;
+    final veryBright = brightness > 0.70;
+    
     try {
       if (cameraController != null && cameraController.value.isInitialized) {
-        if (low && !_torchAutoOn) {
+        if (veryLow && !_torchAutoOn) {
           await cameraController.setFlashMode(FlashMode.torch);
           _torchAutoOn = true;
           return true;
         }
-        if (!low && _torchAutoOn) {
+        if (veryBright && _torchAutoOn) {
           await cameraController.setFlashMode(FlashMode.off);
           _torchAutoOn = false;
           return false;
         }
       } else {
-        if (low && !_torchAutoOn) {
+        if (veryLow && !_torchAutoOn) {
           await torchService.turnOn();
           _torchAutoOn = true;
           return true;
         }
-        if (!low && _torchAutoOn) {
+        if (veryBright && _torchAutoOn) {
           await torchService.turnOff();
           _torchAutoOn = false;
           return false;

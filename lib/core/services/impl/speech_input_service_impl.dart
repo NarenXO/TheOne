@@ -28,24 +28,27 @@ class SpeechInputServiceImpl implements SpeechInputService {
     await _speech.listen(
       onResult: (result) {
         recognizedText = result.recognizedWords;
-        if (result.confidence > 0) {
+        if (result.hasConfidenceRating && result.confidence > 0) {
           speechConfidence = result.confidence;
+        } else if (recognizedText.isNotEmpty) {
+          speechConfidence = 0.88;
         }
       },
       listenOptions: stt.SpeechListenOptions(
-        listenFor: const Duration(seconds: 6),
-        pauseFor: const Duration(seconds: 3),
+        listenFor: const Duration(seconds: 12),
+        pauseFor: const Duration(seconds: 4),
         partialResults: true,
-        localeId: "en_IN",
+        cancelOnError: false,
+        localeId: 'en_IN',
       ),
     );
 
-    // Wait for listening to complete active speech
-    int checks = 0;
-    while (_speech.isListening && checks < 30) {
-      await Future.delayed(const Duration(milliseconds: 200));
-      checks++;
+    // wait until not listening, max 15s
+    final start = DateTime.now();
+    while (_speech.isListening && DateTime.now().difference(start).inSeconds < 15) {
+      await Future.delayed(const Duration(milliseconds: 250));
     }
+    await _speech.stop();
 
     return SpeechResult(
       text: recognizedText,
