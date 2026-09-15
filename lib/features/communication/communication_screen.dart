@@ -6,6 +6,7 @@ import '../../core/services/impl/ocr_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/app_settings_drawer.dart';
 
 class CommunicationScreen extends StatefulWidget {
   const CommunicationScreen({super.key});
@@ -53,7 +54,21 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _initCamera();
+    _tabController.addListener(() {
+      if (_tabController.index == 1) {
+        _initCamera();
+      } else {
+        _disposeCamera();
+      }
+    });
+  }
+
+  void _disposeCamera() async {
+    if (_cameraController != null) {
+      await _cameraController!.dispose();
+      _cameraController = null;
+      if (mounted) setState(() => _isCameraInitialized = false);
+    }
   }
 
   Future<void> _initCamera() async {
@@ -187,41 +202,28 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     if (input.isEmpty) return;
 
     final lower = input.toLowerCase();
-    String out = "";
 
-    if (lower.contains("registration") || lower.contains("rega") || lower.contains("pativu") || lower.contains("counter")) {
-      out = "Excuse me, could you please tell me where the registration desk is located?";
-    } else if (lower.contains("toilet") || lower.contains("restroom") || lower.contains("washroom") || lower.contains("kazi") || lower.contains("kuzhi") || lower.contains("bathroom")) {
-      out = "Excuse me, could you please guide me to the nearest restroom?";
-    } else if (lower.contains("chai") || lower.contains("tea") || lower.contains("coffee") || lower.contains("kaapi") || lower.contains("drink")) {
-      out = "I would like to order a warm beverage, please.";
-    } else if (lower.contains("water") || lower.contains("thanni") || lower.contains("tanni")) {
-      out = "Could I please get a bottle of drinking water?";
-    } else if (lower.contains("food") || lower.contains("sapadu") || lower.contains("saapadu") || lower.contains("menu") || lower.contains("hungry")) {
-      out = "Excuse me, could you please show me the food menu?";
-    } else if (lower.contains("bill") || lower.contains("check") || lower.contains("evlo") || lower.contains("price") || lower.contains("cost")) {
-      out = "Could you please bring me the total bill for this?";
-    } else if (lower.contains("help") || lower.contains("udavi") || lower.contains("emergency")) {
-      out = "I need immediate assistance, please help me.";
-    } else if (lower.contains("room") || RegExp(r'\d{2,4}').hasMatch(lower)) {
-      final match = RegExp(r'\d{2,4}').firstMatch(lower);
-      final roomNum = match != null ? "Room ${match.group(0)}" : "the room";
-      out = "Excuse me, could you please guide me to $roomNum?";
-    } else if (lower.contains("exit") || lower.contains("veliya") || lower.contains("way out")) {
-      out = "Excuse me, could you please show me where the exit is?";
-    } else if (lower.contains("name") || lower.contains("peru") || lower.contains("yaaru")) {
-      out = "Hello! May I please ask what your name is?";
-    } else if (lower.contains("time") || lower.contains("mani")) {
-      out = "Excuse me, could you please tell me what time it is?";
-    } else if (lower.contains("bus") || lower.contains("train") || lower.contains("auto") || lower.contains("cab") || lower.contains("taxi")) {
-      out = "Excuse me, where can I find transportation from here?";
-    } else if (lower.contains("thanks") || lower.contains("thank you") || lower.contains("nandri")) {
-      out = "Thank you so much for your kind help!";
-    } else if (lower.contains("hello") || lower.contains("hi ") || lower == "hi" || lower.contains("vanakkam")) {
-      out = "Hello! I hope you are having a good day.";
+    // Dynamic intent parsing rules
+    bool isQuestion = lower.contains("enga") || lower.contains("epdi") || lower.contains("evlo") || lower.contains("where") || lower.contains("how") || lower.contains("what") || lower.contains("kekkanum");
+    bool isFood = lower.contains("chai") || lower.contains("tea") || lower.contains("coffee") || lower.contains("thanni") || lower.contains("water") || lower.contains("sapadu") || lower.contains("food");
+    bool isLocation = lower.contains("room") || lower.contains("registration") || lower.contains("toilet") || lower.contains("restroom") || lower.contains("exit") || lower.contains("counter");
+
+    String cleanTopic = input
+        .replaceAll(RegExp(r'\b(enga|irukku|nu|kekkanum|venum|pativu|sollunga|sollo)\b', caseSensitive: false), '')
+        .trim();
+
+    if (cleanTopic.isEmpty) cleanTopic = input;
+    cleanTopic = cleanTopic[0].toUpperCase() + cleanTopic.substring(1);
+
+    String out = "";
+    if (isLocation) {
+      out = "Excuse me, could you please guide me to $cleanTopic?";
+    } else if (isFood) {
+      out = "Hello, I would like to order $cleanTopic, please.";
+    } else if (isQuestion) {
+      out = "Excuse me, could you please tell me about $cleanTopic?";
     } else {
-      final capitalized = input[0].toUpperCase() + input.substring(1);
-      out = "Could you please help me with this: $capitalized?";
+      out = "Excuse me, I would like to inquire about $cleanTopic.";
     }
 
     setState(() => _reformattedSentence = out);
@@ -234,6 +236,13 @@ class _CommunicationScreenState extends State<CommunicationScreen>
       backgroundColor: const Color(0xFFD5E3F8), // light blue
       appBar: AppBar(
         title: const Text("COMMUNICATION ASSIST"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => AppSettingsDrawer.show(context),
+            tooltip: "Settings",
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,

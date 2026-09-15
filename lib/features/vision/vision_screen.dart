@@ -18,6 +18,7 @@ import '../../core/safety/sos_service.dart';
 import '../../core/storage/session_storage.dart';
 import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/app_settings_drawer.dart';
 import '../../shared/widgets/evidence_card.dart';
 import 'vision_pipeline.dart';
 
@@ -118,23 +119,28 @@ class _VisionScreenState extends State<VisionScreen> {
     final speechService = SpeechInputServiceImpl();
 
     while (_isLoopListening && mounted) {
-      final speechResult = await speechService.listen();
-      final text = speechResult.text.toLowerCase().trim();
+      try {
+        final speechResult = await speechService.listen();
+        final text = speechResult.text.toLowerCase().trim();
 
-      if (text.contains("hello rook") || text.contains("hey rook") || text.contains("rook")) {
-        AppLogger.i('VISION', 'WAKE WORD HEARD: "$text"');
+        if (text.contains("hello rook") || text.contains("hey rook") || text.contains("rook")) {
+          AppLogger.i('VISION', 'WAKE WORD HEARD: "$text"');
 
-        if (text.contains("help") || text.contains("sos") || text.contains("emergency")) {
-          await _ttsService.speak("Triggering emergency SOS.");
-          await SosService().sendSosSms();
-        } else {
-          _lastHeardQuery = speechResult.text;
-          await _ttsService.speak("Scanning camera.");
-          await _scanLiveCamera();
+          if (text.contains("help") || text.contains("sos") || text.contains("emergency")) {
+            await _ttsService.speak("Triggering emergency SOS.");
+            await SosService().sendSosSms();
+          } else {
+            _lastHeardQuery = speechResult.text;
+            await _ttsService.speak("Scanning camera.");
+            await _scanLiveCamera();
+          }
         }
+      } catch (e) {
+        AppLogger.e('VISION', 'Listening loop error: $e');
       }
 
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Smooth delay to prevent thrashing
+      await Future.delayed(const Duration(milliseconds: 1000));
     }
   }
 
@@ -202,6 +208,7 @@ class _VisionScreenState extends State<VisionScreen> {
   void dispose() {
     _isLoopListening = false;
     _cameraController?.dispose();
+    _cameraController = null;
     _ocrService.dispose();
     _objectService.dispose();
     super.dispose();
@@ -248,6 +255,11 @@ class _VisionScreenState extends State<VisionScreen> {
       appBar: AppBar(
         title: const Text("VISION ASSIST"),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => AppSettingsDrawer.show(context),
+            tooltip: "Settings",
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: () async {

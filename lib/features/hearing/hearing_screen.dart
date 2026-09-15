@@ -10,6 +10,7 @@ import '../../core/storage/preferences_service.dart';
 import '../../core/storage/session_storage.dart';
 import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/app_settings_drawer.dart';
 
 class CaptionLine {
   final String id;
@@ -254,6 +255,13 @@ class _HearingScreenState extends State<HearingScreen> {
       backgroundColor: const Color(0xFFD5E3F8),
       appBar: AppBar(
         title: const Text("HEARING ASSIST"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => AppSettingsDrawer.show(context),
+            tooltip: "Settings",
+          ),
+        ],
       ),
       body: Column(
         children: [

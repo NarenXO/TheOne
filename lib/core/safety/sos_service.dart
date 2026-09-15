@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use
 import 'package:battery_plus/battery_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -25,10 +26,8 @@ class SosService {
       String locStr = 'Location unavailable';
 
       if (await _ensureLocationPermission()) {
-        // ignore: deprecated_member_use
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
-          // ignore: deprecated_member_use
           timeLimit: const Duration(seconds: 5),
         ).catchError((_) async =>
             await Geolocator.getLastKnownPosition() ??

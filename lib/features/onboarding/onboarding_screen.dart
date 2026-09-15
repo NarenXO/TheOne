@@ -44,58 +44,50 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (!_enableVoiceSequence) return;
     await Future.delayed(const Duration(milliseconds: 600));
 
-    // STEP 1: Speak greeting and ask for Name
-    setState(() => _statusText = "Listening for your name...");
+    setState(() => _statusText = "Please say your name...");
     await _ttsService.speak("Welcome to TheOne. Please say your name.");
-    await Future.delayed(const Duration(milliseconds: 1000));
+    await Future.delayed(const Duration(milliseconds: 1200));
 
-    // Auto-activate mic for Name
     setState(() => _isListening = true);
     final nameResult = await _speechService.listen();
     setState(() => _isListening = false);
 
-    String userName = "Naren";
-    if (nameResult.text.trim().isNotEmpty) {
-      userName = nameResult.text.trim();
+    String userName = nameResult.text.trim();
+    if (userName.isNotEmpty) {
       _nameController.text = userName;
+    } else {
+      userName = _nameController.text.trim().isEmpty ? "Naren" : _nameController.text.trim();
     }
 
-    // STEP 2: Speak mode prompt
-    setState(() => _statusText = "Listening for assist mode...");
+    setState(() => _statusText = "Please say Vision, Hearing, or Talk");
     await _ttsService.speak(
-      "Hello $userName. Please say your assist mode: Vision, Hearing, or Talk.",
+      "Hello $userName. Please say your assist mode: Vision, Hearing, or Talk. Or tap a button below.",
     );
-    await Future.delayed(const Duration(milliseconds: 1000));
+    await Future.delayed(const Duration(milliseconds: 1200));
 
-    // Auto-activate mic for Mode
     setState(() => _isListening = true);
     final modeResult = await _speechService.listen();
     setState(() => _isListening = false);
 
     final modeText = modeResult.text.toLowerCase();
-    String selectedMode = 'vision';
-    String modeTitle = 'Vision Assist';
 
-    if (modeText.contains('hearing') || modeText.contains('deaf') || modeText.contains('ear')) {
-      selectedMode = 'hearing';
-      modeTitle = 'Hearing Assist';
+    // DO NOT DEFAULT TO VISION UNLESS EXPLICITLY MATCHED OR TAPPED!
+    if (modeText.contains('vision') || modeText.contains('see') || modeText.contains('blind') || modeText.contains('eye')) {
+      _manualSelect('vision', 'Vision Assist', userName);
+    } else if (modeText.contains('hearing') || modeText.contains('deaf') || modeText.contains('ear') || modeText.contains('listen')) {
+      _manualSelect('hearing', 'Hearing Assist', userName);
     } else if (modeText.contains('talk') || modeText.contains('speak') || modeText.contains('communication') || modeText.contains('mute')) {
-      selectedMode = 'communication';
-      modeTitle = 'Communication Assist';
+      _manualSelect('communication', 'Communication Assist', userName);
+    } else {
+      // Prompt again out loud if nothing matched, DO NOT OPEN VISION AUTOMATICALLY
+      setState(() => _statusText = "Please tap a mode button below or say Vision, Hearing, or Talk");
+      await _ttsService.speak("I did not catch that. Please tap one of the buttons on screen or say Vision, Hearing, or Talk.");
     }
-
-    await PreferencesService.completeOnboarding(userName, selectedMode);
-    await _ttsService.speak("Opening $modeTitle.");
-
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const AppShell()),
-    );
   }
 
-  void _manualSelect(String modeKey, String modeTitle) async {
+  void _manualSelect(String modeKey, String modeTitle, [String? overrideName]) async {
     _enableVoiceSequence = false;
-    final name = _nameController.text.trim().isEmpty ? "Naren" : _nameController.text.trim();
+    final name = overrideName ?? (_nameController.text.trim().isEmpty ? "Naren" : _nameController.text.trim());
     await PreferencesService.completeOnboarding(name, modeKey);
     await _ttsService.speak("Opening $modeTitle.");
 

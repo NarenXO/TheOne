@@ -1,202 +1,135 @@
 import 'package:flutter/material.dart';
+import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/storage/preferences_service.dart';
 import '../../core/storage/session_storage.dart';
 import '../theme/app_theme.dart';
 
-class AppSettingsDrawer extends StatelessWidget {
-  const AppSettingsDrawer({super.key});
+class AppSettingsDrawer extends StatefulWidget {
+  final VoidCallback? onSettingsChanged;
+
+  const AppSettingsDrawer({super.key, this.onSettingsChanged});
+
+  static void show(BuildContext context, {VoidCallback? onSettingsChanged}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AppSettingsDrawer(onSettingsChanged: onSettingsChanged),
+    );
+  }
+
+  @override
+  State<AppSettingsDrawer> createState() => _AppSettingsDrawerState();
+}
+
+class _AppSettingsDrawerState extends State<AppSettingsDrawer> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _sosController = TextEditingController();
+  final SessionStorage _sessionStorage = SessionStorage();
+  final TtsServiceImpl _ttsService = TtsServiceImpl();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  void _loadSettings() async {
+    final name = await PreferencesService.getUserName();
+    final sos = await PreferencesService.getSosContact();
+    if (mounted) {
+      setState(() {
+        _nameController.text = name;
+        _sosController.text = sos;
+      });
+    }
+  }
+
+  void _saveSettings() async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    await PreferencesService.completeOnboarding(
+      _nameController.text.trim(),
+      await PreferencesService.getUserMode(),
+    );
+    await PreferencesService.setSosContact(_sosController.text.trim());
+    await _ttsService.speak("Settings saved. Name updated to ${_nameController.text}.");
+    if (widget.onSettingsChanged != null) widget.onSettingsChanged!();
+    if (!mounted) return;
+    Navigator.pop(context);
+    if (!mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text("Settings saved successfully")),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Drawer(
-      backgroundColor: const Color(0xFFD5E3F8),
-      child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const Icon(Icons.settings, size: 48, color: AppColors.primary),
-            const SizedBox(height: 16),
-            const Text(
-              "Settings",
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.primary),
-            ),
-            const SizedBox(height: 24),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("User Profile", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary)),
-                    const SizedBox(height: 16),
-                    FutureBuilder<String>(
-                      future: PreferencesService.getUserName(),
-                      builder: (context, snapshot) {
-                        return ListTile(
-                          leading: const Icon(Icons.person),
-                          title: const Text("Your Name"),
-                          subtitle: Text(snapshot.data ?? 'Loading...'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () => _showEditNameDialog(context, snapshot.data ?? ''),
-                          ),
-                        );
-                      },
-                    ),
-                    const Divider(),
-                    FutureBuilder<String>(
-                      future: PreferencesService.getUserMode(),
-                      builder: (context, snapshot) {
-                        return ListTile(
-                          leading: const Icon(Icons.visibility),
-                          title: const Text("Primary Mode"),
-                          subtitle: Text(snapshot.data ?? 'Loading...'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () => _showModeSelector(context, snapshot.data ?? 'vision'),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Emergency", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.danger)),
-                    const SizedBox(height: 16),
-                    FutureBuilder<String>(
-                      future: PreferencesService.getSosContact(),
-                      builder: (context, snapshot) {
-                        return ListTile(
-                          leading: const Icon(Icons.phone, color: AppColors.danger),
-                          title: const Text("SOS Contact"),
-                          subtitle: Text(snapshot.data ?? '911'),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () => _showEditSosDialog(context, snapshot.data ?? '911'),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.delete_outline, color: AppColors.danger),
-                title: const Text("Clear Session Data"),
-                subtitle: const Text("Remove all evidence and captions"),
-                onTap: () async {
-                  final messenger = ScaffoldMessenger.of(context);
-                  await SessionStorage().clearSession();
-                  if (context.mounted) {
-                    messenger.showSnackBar(
-                      const SnackBar(content: Text("Session data cleared")),
-                    );
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
+    return Container(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
-    );
-  }
-
-  void _showEditNameDialog(BuildContext context, String currentName) {
-    final controller = TextEditingController(text: currentName);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Edit Your Name"),
-        content: TextField(controller: controller),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.settings, color: AppColors.primary, size: 28),
+              const SizedBox(width: 10),
+              const Text("TheOne Settings", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primary)),
+              const Spacer(),
+              IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+            ],
           ),
-          ElevatedButton(
+          const Divider(),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _nameController,
+            decoration: const InputDecoration(
+              labelText: "Your Name (for 'Name Called' vibration)",
+              prefixIcon: Icon(Icons.person),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _sosController,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: "Emergency Contact Phone Number",
+              prefixIcon: Icon(Icons.phone),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            onPressed: _saveSettings,
+            icon: const Icon(Icons.save),
+            label: const Text("SAVE SETTINGS"),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.danger, side: const BorderSide(color: AppColors.danger)),
             onPressed: () async {
-              await PreferencesService.completeOnboarding(controller.text, await PreferencesService.getUserMode());
-              if (context.mounted) Navigator.pop(context);
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
+              await _sessionStorage.clearSession();
+              navigator.pop();
+              messenger.showSnackBar(
+                const SnackBar(content: Text("SQLite session history cleared")),
+              );
             },
-            child: const Text("Save"),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text("CLEAR SESSION MEMORY"),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showEditSosDialog(BuildContext context, String currentContact) {
-    final controller = TextEditingController(text: currentContact);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Edit SOS Contact"),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.phone,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              await PreferencesService.setSosContact(controller.text);
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text("Save"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showModeSelector(BuildContext context, String currentMode) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Select Primary Mode"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text("Vision Assist"),
-              trailing: currentMode == 'vision' ? const Icon(Icons.check, color: AppColors.primary) : null,
-              onTap: () async {
-                await PreferencesService.completeOnboarding(await PreferencesService.getUserName(), 'vision');
-                if (context.mounted) Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text("Hearing Assist"),
-              trailing: currentMode == 'hearing' ? const Icon(Icons.check, color: AppColors.primary) : null,
-              onTap: () async {
-                await PreferencesService.completeOnboarding(await PreferencesService.getUserName(), 'hearing');
-                if (context.mounted) Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text("Communication Assist"),
-              trailing: currentMode == 'communication' ? const Icon(Icons.check, color: AppColors.primary) : null,
-              onTap: () async {
-                await PreferencesService.completeOnboarding(await PreferencesService.getUserName(), 'communication');
-                if (context.mounted) Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
       ),
     );
   }
