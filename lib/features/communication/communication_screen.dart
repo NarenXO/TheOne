@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
-import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
@@ -19,7 +18,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TtsServiceImpl _ttsService = TtsServiceImpl();
-  final SpeechInputServiceImpl _speechService = SpeechInputServiceImpl();
   final OcrServiceImpl _ocrService = OcrServiceImpl();
 
   CameraController? _cameraController;
@@ -28,8 +26,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   final TextEditingController _customPhraseController = TextEditingController();
   final TextEditingController _intentInputController = TextEditingController();
 
-  String _lastOtherPersonReply = "";
-  bool _isListeningToReply = false;
   String _reformattedSentence = "";
 
   // Pre-loaded contextual phrases
@@ -59,28 +55,71 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _initCamera();
   }
 
   Future<void> _initCamera() async {
-    final cam = await Permission.camera.request();
-    if (!cam.isGranted) {
-      setState(() => _isCameraInitialized = false);
+    if (!mounted) return;
+
+    final camStatus = await Permission.camera.request();
+
+    if (!camStatus.isGranted) {
+      if (mounted) {
+        setState(() => _isCameraInitialized = false);
+      }
       return;
     }
+
     try {
+      if (_cameraController != null) {
+        await _cameraController!.dispose();
+        _cameraController = null;
+      }
+
       final cameras = await availableCameras();
-      if (cameras.isNotEmpty) {
+      if (cameras.isEmpty) {
+        if (mounted) {
+          setState(() => _isCameraInitialized = false);
+        }
+        return;
+      }
+
+      final firstCam = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      _cameraController = CameraController(
+        firstCam,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+
+      try {
+        await _cameraController!.initialize();
+      } catch (_) {
+        // Fallback to low resolution if medium fails
         _cameraController = CameraController(
-          cameras.first,
-          ResolutionPreset.medium,
+          firstCam,
+          ResolutionPreset.low,
           enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.jpeg,
         );
         await _cameraController!.initialize();
-        if (mounted) setState(() => _isCameraInitialized = true);
       }
-    } catch (_) {}
+
+      if (mounted) {
+        setState(() => _isCameraInitialized = true);
+        AppLogger.i('COMMUNICATION', 'Camera successfully initialized (${firstCam.name})');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isCameraInitialized = false);
+        AppLogger.e('COMMUNICATION', 'Camera init error: $e');
+      }
+    }
   }
 
   @override
@@ -144,70 +183,49 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   // Code-Mixed Intent-to-Speech Transformer
   void _reformatIntentToSpeech() {
     final input = _intentInputController.text.trim();
-    final lower = input.toLowerCase();
     if (input.isEmpty) return;
 
-    String out;
-    if (lower.contains('registration') || lower.contains('rega') || lower.contains('pativu') || lower.contains('enga irukku') || lower.contains('kekkanum')) {
-      out = 'Excuse me, could you please tell me where the registration desk is?';
-    } else if (lower.contains('toilet') || lower.contains('restroom') || lower.contains('washroom') || lower.contains('kuzhi') || lower.contains('kazi')) {
-      out = 'Excuse me, could you please tell me where the restroom is?';
-    } else if (lower.contains('water') || lower.contains('thanni') || lower.contains('tanni')) {
-      out = 'Could I please get a bottle of water?';
-    } else if (lower.contains('chai') || lower.contains('tea') || lower.contains('coffee') || lower.contains('kaapi')) {
-      out = 'I would like a medium chai, please.';
-    } else if (lower.contains('bill') || lower.contains('check') || lower.contains('hisab')) {
-      out = 'Could you please bring the bill?';
-    } else if (lower.contains('help') || lower.contains('udavi') || lower.contains('emergency')) {
-      out = 'I need help, please. It is urgent.';
-    } else if (lower.contains('name') || lower.contains('per')) {
-      out = 'Hello, could you please tell me your name?';
-    } else if (lower.contains('price') || lower.contains('cost') || lower.contains('evlo') || lower.contains('how much')) {
-      out = 'Excuse me, how much does this cost?';
-    } else if (lower.contains('room') && RegExp(r'\d{2,4}').hasMatch(lower)) {
-      final n = RegExp(r'\d{2,4}').firstMatch(lower)!.group(0);
-      out = 'Excuse me, could you please guide me to room $n?';
-    } else if (lower.contains('exit') || lower.contains('veliyil') || lower.contains('way out')) {
-      out = 'Excuse me, could you please show me the exit?';
-    } else if (lower.contains('hello') || lower.contains('hi ') || lower == 'hi') {
-      out = 'Hello, how are you?';
-    } else if (lower.contains('thanks') || lower.contains('thank you') || lower.contains('nandri')) {
-      out = 'Thank you so much for your help.';
+    final lower = input.toLowerCase();
+    String out = "";
+
+    if (lower.contains("registration") || lower.contains("rega") || lower.contains("pativu") || lower.contains("counter")) {
+      out = "Excuse me, could you please tell me where the registration desk is located?";
+    } else if (lower.contains("toilet") || lower.contains("restroom") || lower.contains("washroom") || lower.contains("kazi") || lower.contains("kuzhi") || lower.contains("bathroom")) {
+      out = "Excuse me, could you please guide me to the nearest restroom?";
+    } else if (lower.contains("chai") || lower.contains("tea") || lower.contains("coffee") || lower.contains("kaapi") || lower.contains("drink")) {
+      out = "I would like to order a warm beverage, please.";
+    } else if (lower.contains("water") || lower.contains("thanni") || lower.contains("tanni")) {
+      out = "Could I please get a bottle of drinking water?";
+    } else if (lower.contains("food") || lower.contains("sapadu") || lower.contains("saapadu") || lower.contains("menu") || lower.contains("hungry")) {
+      out = "Excuse me, could you please show me the food menu?";
+    } else if (lower.contains("bill") || lower.contains("check") || lower.contains("evlo") || lower.contains("price") || lower.contains("cost")) {
+      out = "Could you please bring me the total bill for this?";
+    } else if (lower.contains("help") || lower.contains("udavi") || lower.contains("emergency")) {
+      out = "I need immediate assistance, please help me.";
+    } else if (lower.contains("room") || RegExp(r'\d{2,4}').hasMatch(lower)) {
+      final match = RegExp(r'\d{2,4}').firstMatch(lower);
+      final roomNum = match != null ? "Room ${match.group(0)}" : "the room";
+      out = "Excuse me, could you please guide me to $roomNum?";
+    } else if (lower.contains("exit") || lower.contains("veliya") || lower.contains("way out")) {
+      out = "Excuse me, could you please show me where the exit is?";
+    } else if (lower.contains("name") || lower.contains("peru") || lower.contains("yaaru")) {
+      out = "Hello! May I please ask what your name is?";
+    } else if (lower.contains("time") || lower.contains("mani")) {
+      out = "Excuse me, could you please tell me what time it is?";
+    } else if (lower.contains("bus") || lower.contains("train") || lower.contains("auto") || lower.contains("cab") || lower.contains("taxi")) {
+      out = "Excuse me, where can I find transportation from here?";
+    } else if (lower.contains("thanks") || lower.contains("thank you") || lower.contains("nandri")) {
+      out = "Thank you so much for your kind help!";
+    } else if (lower.contains("hello") || lower.contains("hi ") || lower == "hi" || lower.contains("vanakkam")) {
+      out = "Hello! I hope you are having a good day.";
     } else {
-      // Clean generic fallback: polish fragment, don't dump raw only
-      out = 'Excuse me, $input.';
-      if (!out.trim().endsWith('.') && !out.trim().endsWith('?')) out = '$out.';
+      // Natural transformer fallback (capitalizes first letter, adds polite request prefix)
+      final capitalized = input[0].toUpperCase() + input.substring(1);
+      out = "Could you please help me with this: $capitalized?";
     }
 
-    AppLogger.i('COMMUNICATION', 'Intent transformed: "$input" -> "$out"');
     setState(() => _reformattedSentence = out);
-  }
-
-  // Capture other person's spoken response
-  Future<void> _listenToReply() async {
-    AppLogger.i('COMMUNICATION', 'Listening for other person response...');
-    setState(() {
-      _isListeningToReply = true;
-      _lastOtherPersonReply = 'Listening... please ask them to speak clearly';
-    });
-    try {
-      final result = await _speechService.listen();
-      final text = result.text.trim();
-      setState(() {
-        _lastOtherPersonReply = text.isEmpty
-            ? 'No speech detected. Tap again and ask them to speak louder.'
-            : text;
-        _isListeningToReply = false;
-      });
-      if (text.isNotEmpty) {
-        await _ttsService.speak('They said: $text');
-      }
-    } catch (e) {
-      setState(() {
-        _lastOtherPersonReply = 'Mic error: $e';
-        _isListeningToReply = false;
-      });
-    }
+    AppLogger.i('COMMUNICATION', 'Intent transformed: "$input" -> "$out"');
   }
 
   @override
@@ -222,7 +240,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
             Tab(icon: Icon(Icons.forum), text: "Phrases"),
             Tab(icon: Icon(Icons.camera_alt), text: "Photo"),
             Tab(icon: Icon(Icons.auto_fix_high), text: "Intent"),
-            Tab(icon: Icon(Icons.hearing), text: "Reply"),
           ],
         ),
       ),
@@ -232,7 +249,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
           _buildQuickPhrasesTab(),
           _buildPhotoAssistTab(),
           _buildIntentTab(),
-          _buildCaptureReplyTab(),
         ],
       ),
     );
@@ -465,64 +481,6 @@ class _CommunicationScreenState extends State<CommunicationScreen>
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(44),
                     ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCaptureReplyTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.hearing, size: 64, color: AppColors.primary),
-          const SizedBox(height: 16),
-          const Text(
-            "LISTEN TO THEIR REPLY",
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "Hold phone towards person speaking to transcribe their reply.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isListeningToReply ? AppColors.danger : AppColors.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              minimumSize: const Size.fromHeight(56),
-            ),
-            onPressed: _isListeningToReply ? null : _listenToReply,
-            icon: Icon(_isListeningToReply ? Icons.mic : Icons.mic_none, color: Colors.white),
-            label: Text(
-              _isListeningToReply ? "LISTENING..." : "LISTEN",
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (_lastOtherPersonReply.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary, width: 2),
-              ),
-              child: Column(
-                children: [
-                  const Text("Reply:", style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                  const SizedBox(height: 12),
-                  Text(
-                    '"$_lastOtherPersonReply"',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                    textAlign: TextAlign.center,
                   ),
                 ],
               ),

@@ -64,49 +64,78 @@ class _VisionScreenState extends State<VisionScreen> {
   }
 
   Future<void> _initCamera() async {
-    setState(() {
-      _cameraErrorMsg = "Requesting permissions...";
-    });
+    if (!mounted) return;
+    setState(() => _cameraErrorMsg = "Requesting permissions...");
 
     final camStatus = await Permission.camera.request();
     await Permission.microphone.request();
 
     if (!camStatus.isGranted) {
-      setState(() {
-        _isCameraInitialized = false;
-        _cameraErrorMsg = "Camera permission denied. Please grant in phone settings.";
-      });
+      if (mounted) {
+        setState(() {
+          _isCameraInitialized = false;
+          _cameraErrorMsg = "Camera permission denied. Tap button below to grant in phone settings.";
+        });
+      }
       return;
     }
 
     try {
+      if (_cameraController != null) {
+        await _cameraController!.dispose();
+        _cameraController = null;
+      }
+
       final cameras = await availableCameras();
-      if (cameras.isNotEmpty) {
+      if (cameras.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _isCameraInitialized = false;
+            _cameraErrorMsg = "No camera hardware detected.";
+          });
+        }
+        return;
+      }
+
+      final firstCam = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      _cameraController = CameraController(
+        firstCam,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+
+      try {
+        await _cameraController!.initialize();
+      } catch (_) {
+        // Fallback to low resolution if medium fails
         _cameraController = CameraController(
-          cameras.first,
-          ResolutionPreset.medium,
+          firstCam,
+          ResolutionPreset.low,
           enableAudio: false,
           imageFormatGroup: ImageFormatGroup.jpeg,
         );
         await _cameraController!.initialize();
-        if (mounted) {
-          setState(() {
-            _isCameraInitialized = true;
-            _cameraErrorMsg = "";
-          });
-        }
-      } else {
+      }
+
+      if (mounted) {
         setState(() {
-          _isCameraInitialized = false;
-          _cameraErrorMsg = "No camera hardware detected on device.";
+          _isCameraInitialized = true;
+          _cameraErrorMsg = "";
         });
+        AppLogger.i('VISION', 'Camera successfully initialized (${firstCam.name})');
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isCameraInitialized = false;
-          _cameraErrorMsg = "Camera init error: $e";
+          _cameraErrorMsg = "Camera error: $e. Tap retry below.";
         });
+        AppLogger.e('VISION', 'Camera init error: $e');
       }
     }
   }
@@ -173,17 +202,35 @@ class _VisionScreenState extends State<VisionScreen> {
   }
 
   Future<void> _voiceAsk() async {
-    setState(() => _statusLine = 'Listening... speak now');
-    final speech = SpeechInputServiceImpl();
-    final result = await speech.listen();
-    if (result.text.trim().isEmpty) {
-      setState(() => _statusLine = 'No speech heard. Try again.');
-      await _ttsService.speak('I did not catch that. Please try again.');
+    if (!(await Permission.microphone.request()).isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Microphone permission required for voice query.")),
+        );
+      }
       return;
     }
-    _queryController.text = result.text;
-    setState(() => _statusLine = 'Heard: ${result.text}');
-    await _scanLiveCamera(); // scan after question
+
+    setState(() => _statusLine = "Listening for voice query...");
+
+    setState(() => _statusLine = "Listening for voice query...");
+
+    final speech = SpeechInputServiceImpl();
+    final result = await speech.listen();
+
+    if (!mounted) return;
+
+    if (result.text.trim().isEmpty) {
+      setState(() => _statusLine = "No speech heard. Please try tapping again.");
+      await _ttsService.speak("I did not catch that. Please speak again.");
+      return;
+    }
+
+    _queryController.text = result.text.trim();
+    setState(() => _statusLine = 'Query heard: "${result.text.trim()}" — Scanning camera now...');
+    AppLogger.i('VISION', 'Voice query captured: "${result.text.trim()}"');
+
+    await _scanLiveCamera();
   }
 
   Future<void> _scanLiveCamera() async {
@@ -243,6 +290,48 @@ class _VisionScreenState extends State<VisionScreen> {
     super.dispose();
   }
 
+  Widget _buildCameraPreview() {
+    if (!_isCameraInitialized || _cameraController == null || !_cameraController!.value.isInitialized) {
+      return Container(
+        height: 280,
+        width: double.infinity,
+        color: AppColors.primaryDark,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.camera_enhance, color: Colors.white70, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              _cameraErrorMsg.isNotEmpty ? _cameraErrorMsg : "Initializing Camera...",
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AppColors.primary),
+              onPressed: _initCamera,
+              icon: const Icon(Icons.refresh),
+              label: const Text("RETRY / ENABLE CAMERA"),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      height: 280,
+      width: double.infinity,
+      color: Colors.black,
+      child: ClipRect(
+        child: AspectRatio(
+          aspectRatio: _cameraController!.value.aspectRatio,
+          child: CameraPreview(_cameraController!),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -292,63 +381,12 @@ class _VisionScreenState extends State<VisionScreen> {
           ),
           // Camera Preview Box
           Container(
-            height: 320,
-            width: double.infinity,
             margin: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.black,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.primaryDark, width: 3),
             ),
-            child: _isCameraInitialized && _cameraController != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: SizedBox.expand(
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        child: CameraPreview(_cameraController!),
-                      ),
-                    ),
-                  )
-                : Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.camera_alt, color: AppColors.textSecondary, size: 40),
-                          const SizedBox(height: 8),
-                          const Text(
-                            "CAMERA NOT READY",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _cameraErrorMsg.isEmpty ? "Camera initializing..." : _cameraErrorMsg,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          if (_cameraErrorMsg.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            ElevatedButton(
-                              onPressed: _initCamera,
-                              style: ElevatedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(40),
-                              ),
-                              child: const Text("RETRY CAMERA"),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
+            child: _buildCameraPreview(),
           ),
           // Status Strip
           Container(

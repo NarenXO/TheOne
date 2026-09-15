@@ -112,20 +112,31 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   void _processSpeechInput(String text, double confidence) async {
-    // Determine tone based on text keyword indicators or loud patterns
+    final lowerText = text.toLowerCase();
     String tone = "Neutral";
     IconData toneIcon = Icons.sentiment_neutral;
-    final lowerText = text.toLowerCase();
-    
-    // Real danger detection with expanded keywords
-    final dangerKeywords = ["help", "stop", "danger", "fire", "alarm", "run", "careful", "watch out"];
-    final hasDangerKeyword = dangerKeywords.any((keyword) => lowerText.contains(keyword));
-    
-    if (text.contains("!") || hasDangerKeyword) {
+
+    final urgentKeywords = [
+      "help", "stop", "danger", "fire", "alarm", "run", "careful",
+      "watch out", "emergency", "shout", "urgent", "fast", "hurry", "no", "don't"
+    ];
+    final inquisitiveKeywords = [
+      "?", "where", "what", "when", "why", "who", "how", "enga",
+      "eppo", "edhu", "en", "yaai", "which", "could you"
+    ];
+    final friendlyKeywords = [
+      "thanks", "thank you", "hello", "hi", "good", "please",
+      "nandri", "vanakkam", "welcome", "nice", "great"
+    ];
+
+    if (urgentKeywords.any((k) => lowerText.contains(k)) || lowerText.contains("!")) {
       tone = "Urgent";
       toneIcon = Icons.warning_amber_rounded;
-      _triggerDangerSoundAlert("Urgent sound / shout detected: '$text'");
-    } else if (lowerText.contains("hello") || lowerText.contains("thanks") || lowerText.contains("good")) {
+      _triggerDangerSoundAlert("Urgent alert detected in speech: '$text'");
+    } else if (inquisitiveKeywords.any((k) => lowerText.contains(k))) {
+      tone = "Inquisitive";
+      toneIcon = Icons.help_outline;
+    } else if (friendlyKeywords.any((k) => lowerText.contains(k))) {
       tone = "Friendly";
       toneIcon = Icons.sentiment_satisfied_alt;
     }
