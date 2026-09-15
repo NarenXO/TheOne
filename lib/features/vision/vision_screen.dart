@@ -391,7 +391,7 @@ class _VisionScreenState extends State<VisionScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _scanLiveCamera,
                     icon: const Icon(Icons.camera_alt),
-                    label: const Text("SCAN LIVE"),
+                    label: const Text("SCAN LIVE CAMERA"),
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
                     ),
@@ -402,7 +402,7 @@ class _VisionScreenState extends State<VisionScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _isListening ? null : _voiceAsk,
                     icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                    label: Text(_isListening ? "LISTENING..." : "VOICE ASK"),
+                    label: Text(_isListening ? "LISTENING..." : "VOICE QUERY + SCAN"),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
                     ),

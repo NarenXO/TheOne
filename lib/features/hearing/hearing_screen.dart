@@ -115,11 +115,17 @@ class _HearingScreenState extends State<HearingScreen> {
     // Determine tone based on text keyword indicators or loud patterns
     String tone = "Neutral";
     IconData toneIcon = Icons.sentiment_neutral;
-    if (text.contains("!") || text.contains("help") || text.contains("stop") || text.contains("danger")) {
+    final lowerText = text.toLowerCase();
+    
+    // Real danger detection with expanded keywords
+    final dangerKeywords = ["help", "stop", "danger", "fire", "alarm", "run", "careful", "watch out"];
+    final hasDangerKeyword = dangerKeywords.any((keyword) => lowerText.contains(keyword));
+    
+    if (text.contains("!") || hasDangerKeyword) {
       tone = "Urgent";
       toneIcon = Icons.warning_amber_rounded;
       _triggerDangerSoundAlert("Urgent sound / shout detected: '$text'");
-    } else if (text.contains("hello") || text.contains("thanks") || text.contains("good")) {
+    } else if (lowerText.contains("hello") || lowerText.contains("thanks") || lowerText.contains("good")) {
       tone = "Friendly";
       toneIcon = Icons.sentiment_satisfied_alt;
     }
