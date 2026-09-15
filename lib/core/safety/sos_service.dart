@@ -25,8 +25,10 @@ class SosService {
       String locStr = 'Location unavailable';
 
       if (await _ensureLocationPermission()) {
+        // ignore: deprecated_member_use
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
+          // ignore: deprecated_member_use
           timeLimit: const Duration(seconds: 5),
         ).catchError((_) async =>
             await Geolocator.getLastKnownPosition() ??

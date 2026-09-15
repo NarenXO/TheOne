@@ -44,7 +44,7 @@ class SensorIndicator extends StatelessWidget {
     required String label,
     required bool isActive,
   }) {
-    final color = isActive ? AppColors.sensorActive : AppColors.sensorInactive;
+    final color = isActive ? AppColors.danger : AppColors.success;
     return Semantics(
       label: label,
       child: Row(

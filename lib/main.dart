@@ -17,7 +17,9 @@ void main() async {
 }
 
 class TheOneApp extends StatelessWidget {
-  const TheOneApp({super.key});
+  const TheOneApp({super.key, this.prefs});
+
+  final dynamic prefs;
 
   @override
   Widget build(BuildContext context) {

@@ -78,8 +78,8 @@ class _CustomPhraseDialogState extends State<CustomPhraseDialog> {
                   border: OutlineInputBorder(),
                 ),
                 items: _categories.map((category) {
-                  return DropdownMenuItem(
-                    initialValue: category,
+                  return DropdownMenuItem<String>(
+                    value: category,
                     child: Text(category.capitalize()),
                   );
                 }).toList(),

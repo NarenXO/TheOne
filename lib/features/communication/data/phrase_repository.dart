@@ -29,9 +29,7 @@ class PhraseRepository {
   }
 
   Future<List<PhraseItem>> getAllPhrases() async {
-    if (_cachedPhrases == null) {
-      _cachedPhrases = await _database.getAllPhrases();
-    }
+    _cachedPhrases ??= await _database.getAllPhrases();
     return _cachedPhrases!;
   }
 

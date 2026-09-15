@@ -19,14 +19,12 @@ void main() {
         ),
       ];
 
-      var tappedPhrase = '';
-      
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: EmergencyPhraseBar(
               emergencyPhrases: emergencyPhrases,
-              onPhraseTap: (phrase) => tappedPhrase = phrase.id,
+              onPhraseTap: (phrase) {},
             ),
           ),
         ),
