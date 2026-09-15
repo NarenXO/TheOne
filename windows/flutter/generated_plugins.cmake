@@ -3,7 +3,9 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  battery_plus
   flutter_tts
+  geolocator_windows
   permission_handler_windows
   speech_to_text_windows
 )
