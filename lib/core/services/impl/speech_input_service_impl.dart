@@ -17,13 +17,13 @@ class SpeechInputServiceImpl implements SpeechInputService {
   }
 
   @override
-  Future<SpeechResult> listen() async {
+  Future<SpeechResult> listen({String localeId = 'en_IN'}) async {
     final ready = await init();
     if (!ready) {
       return SpeechResult(text: "", confidence: 0.0, languageCode: "en");
     }
 
-    AppLogger.i('STT', 'Listening for microphone speech input...');
+    AppLogger.i('STT', 'Listening for microphone speech input... (locale: $localeId)');
 
     String recognizedText = "";
     double speechConfidence = 0.85;
@@ -42,7 +42,7 @@ class SpeechInputServiceImpl implements SpeechInputService {
         pauseFor: const Duration(seconds: 4),
         partialResults: true,
         cancelOnError: false,
-        localeId: 'en_IN',
+        localeId: localeId,
       ),
     );
 
@@ -58,7 +58,7 @@ class SpeechInputServiceImpl implements SpeechInputService {
     return SpeechResult(
       text: recognizedText,
       confidence: speechConfidence,
-      languageCode: "en_IN",
+      languageCode: localeId,
     );
   }
 

@@ -1,5 +1,5 @@
 abstract class SpeechInputService {
-  Future<SpeechResult> listen();
+  Future<SpeechResult> listen({String localeId = 'en_IN'});
   Future<void> stop();
 }
 

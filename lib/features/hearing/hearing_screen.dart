@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:vibration/vibration.dart';
 import '../../core/evidence/evidence.dart';
 import '../../core/models/evidence_source.dart';
 import '../../core/models/evidence_type.dart';
@@ -97,7 +98,8 @@ class _HearingScreenState extends State<HearingScreen> {
     _emptyListenCount = 0;
 
     while (_isListening && mounted) {
-      final speechResult = await _speechService.listen();
+      // Use ta_IN for Tamil/English code-mixed recognition
+      final speechResult = await _speechService.listen(localeId: 'ta_IN');
       if (speechResult.text.trim().isNotEmpty) {
         _processSpeechInput(speechResult.text, speechResult.confidence);
         _emptyListenCount = 0;
@@ -153,7 +155,10 @@ class _HearingScreenState extends State<HearingScreen> {
     // Check if live audio contains user's name
     if (_savedUserName.isNotEmpty && lowerText.contains(_savedUserName.toLowerCase())) {
       AppLogger.w('HEARING', 'NAME CALLED DETECTED: "$text" contains "$_savedUserName"');
-      _hapticService.vibratePhrase("name");
+      // Double-pulse vibration for name called
+      if (await Vibration.hasVibrator()) {
+        await Vibration.vibrate(pattern: [0, 80, 50, 80]);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

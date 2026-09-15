@@ -15,6 +15,7 @@ import '../../core/services/impl/object_detection_service_impl.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
+import '../../core/safety/sos_service.dart';
 import '../../core/storage/session_storage.dart';
 import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
@@ -43,10 +44,8 @@ class _VisionScreenState extends State<VisionScreen> {
 
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
-  final TextEditingController _queryController = TextEditingController(text: "Room 204 enga irukku?");
-  // ignore: prefer_final_fields
   bool _isListening = false;
-  String _statusLine = 'Ready';
+  String _statusLine = 'Tap mic and say "Hey Rook" to activate';
 
   @override
   void initState() {
@@ -80,27 +79,30 @@ class _VisionScreenState extends State<VisionScreen> {
         orElse: () => cameras.first,
       );
 
+      // Try medium resolution first to avoid surface combination limit on Android
       _cameraController = CameraController(
         backCam,
-        ResolutionPreset.high,
+        ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       try {
         await _cameraController!.initialize();
-      } catch (e) {
-        AppLogger.w('CAMERA', 'High resolution failed: $e, trying medium resolution');
+      } catch (_) {
+        // Fallback to low resolution
         _cameraController = CameraController(
           backCam,
-          ResolutionPreset.medium,
+          ResolutionPreset.low,
           enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.jpeg,
         );
         await _cameraController!.initialize();
       }
 
       if (mounted) {
         setState(() => _isCameraInitialized = true);
-        AppLogger.i('CAMERA', 'Camera initialized successfully');
+        AppLogger.i('CAMERA', 'Camera initialized successfully (ResolutionPreset.medium)');
       }
     } catch (e) {
       AppLogger.e('CAMERA', 'Camera init exception: $e');
@@ -148,14 +150,15 @@ class _VisionScreenState extends State<VisionScreen> {
       return;
     }
 
-    setState(() => _statusLine = "Listening for voice query...");
-
-    setState(() => _statusLine = "Listening for voice query...");
+    setState(() => _isListening = true);
+    setState(() => _statusLine = "Listening... Say 'Hey Rook' or your question");
 
     final speech = SpeechInputServiceImpl();
     final result = await speech.listen();
 
     if (!mounted) return;
+
+    setState(() => _isListening = false);
 
     if (result.text.trim().isEmpty) {
       setState(() => _statusLine = "No speech heard. Please try tapping again.");
@@ -163,11 +166,37 @@ class _VisionScreenState extends State<VisionScreen> {
       return;
     }
 
-    _queryController.text = result.text.trim();
-    setState(() => _statusLine = 'Query heard: "${result.text.trim()}" — Scanning camera now...');
+    final text = result.text.trim().toLowerCase();
     AppLogger.i('VISION', 'Voice query captured: "${result.text.trim()}"');
 
-    await _scanLiveCamera();
+    // Wake word detection
+    if (text.contains("hello rook") || text.contains("hey rook")) {
+      setState(() => _statusLine = "Wake word detected. Processing request...");
+
+      // Check for SOS keywords
+      if (text.contains("help") || text.contains("sos") || text.contains("emergency")) {
+        setState(() => _statusLine = "Sending SOS alert...");
+        await SosService().sendSosSms();
+        await _ttsService.speak("SOS alert sent to emergency contact.");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("🚨 SOS Alert Sent"),
+              backgroundColor: AppColors.danger,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        setState(() => _statusLine = "SOS alert sent");
+        return;
+      }
+
+      // Otherwise, capture picture and analyze
+      await _scanLiveCamera();
+    } else {
+      // Not a wake word, treat as regular query
+      await _scanLiveCamera();
+    }
   }
 
   Future<void> _scanLiveCamera() async {
@@ -195,9 +224,7 @@ class _VisionScreenState extends State<VisionScreen> {
         }
       }
 
-      final query = _queryController.text.trim().isEmpty
-          ? 'What is in front of me?'
-          : _queryController.text.trim();
+      final query = 'What is in front of me?';
 
       await _processVerification(bundle, query);
 
@@ -214,7 +241,6 @@ class _VisionScreenState extends State<VisionScreen> {
     _cameraController?.dispose();
     _ocrService.dispose();
     _objectService.dispose();
-    _queryController.dispose();
     super.dispose();
   }
 
@@ -302,40 +328,14 @@ class _VisionScreenState extends State<VisionScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Card(
-                color: Colors.white,
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: TextField(
-                    controller: _queryController,
-                    decoration: InputDecoration(
-                      labelText: "Ask a question (Tamil / English)",
-                      prefixIcon: const Icon(Icons.question_answer),
-                      suffixIcon: IconButton(
-                        icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                        onPressed: _isListening ? null : _voiceAsk,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: _scanLiveCamera,
-                icon: const Icon(Icons.camera_alt),
-                label: const Text("SCAN LIVE CAMERA"),
+                onPressed: _isListening ? null : _voiceAsk,
+                icon: Icon(_isListening ? Icons.mic : Icons.mic_none, size: 32),
+                label: Text(_isListening ? "LISTENING..." : "TAP & SAY 'HEY ROOK'"),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  minimumSize: const Size.fromHeight(50),
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _isListening ? null : _voiceAsk,
-                icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                label: Text(_isListening ? "LISTENING..." : "VOICE ASK + SCAN"),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
+                  minimumSize: const Size.fromHeight(60),
+                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
               ),
               const SizedBox(height: 16),

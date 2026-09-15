@@ -30,8 +30,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _speakWelcome() async {
     _welcomeTimer = Timer(const Duration(milliseconds: 500), () async {
       await _ttsService.speak(
-        "Welcome to TheOne. Please enter your name, then select Vision, Hearing, or Communication assist.",
+        "Welcome to TheOne. Please say your name and select Vision, Hearing, or Communication assist.",
       );
+      // Auto-activate microphone after 1.5 seconds
+      Timer(const Duration(milliseconds: 1500), () {
+        if (mounted) _listenName();
+      });
     });
   }
 
@@ -39,10 +43,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     setState(() => _isListeningName = true);
     final result = await _speechService.listen();
     if (result.text.trim().isNotEmpty && mounted) {
+      final text = result.text.trim().toLowerCase();
       setState(() {
         _nameController.text = result.text.trim();
         _isListeningName = false;
       });
+
+      // Check for mode keywords
+      if (text.contains("vision")) {
+        await _selectModeAndProceed('vision', 'Vision Assist');
+        return;
+      } else if (text.contains("hearing") || text.contains("deaf")) {
+        await _selectModeAndProceed('hearing', 'Hearing Assist');
+        return;
+      } else if (text.contains("talk") || text.contains("communication") || text.contains("speech")) {
+        await _selectModeAndProceed('communication', 'Communication Assist');
+        return;
+      }
+
       await _ttsService.speak("Name set to ${_nameController.text}");
     } else {
       if (mounted) setState(() => _isListeningName = false);

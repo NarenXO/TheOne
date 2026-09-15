@@ -74,26 +74,30 @@ class _CommunicationScreenState extends State<CommunicationScreen>
         orElse: () => cameras.first,
       );
 
+      // Try medium resolution first to avoid surface combination limit on Android
       _cameraController = CameraController(
         backCam,
-        ResolutionPreset.high,
+        ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       try {
         await _cameraController!.initialize();
       } catch (_) {
+        // Fallback to low resolution
         _cameraController = CameraController(
           backCam,
-          ResolutionPreset.medium,
+          ResolutionPreset.low,
           enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.jpeg,
         );
         await _cameraController!.initialize();
       }
 
       if (mounted) {
         setState(() => _isCameraInitialized = true);
-        AppLogger.i('COMMUNICATION', 'Photo camera initialized');
+        AppLogger.i('COMMUNICATION', 'Camera initialized successfully (ResolutionPreset.medium)');
       }
     } catch (e) {
       AppLogger.e('COMMUNICATION', 'Camera init error: $e');
