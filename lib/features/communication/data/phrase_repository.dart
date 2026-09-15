@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:theone/features/communication/models/phrase_item.dart';
 import 'communication_database.dart';
@@ -114,3 +114,4 @@ class PhraseRepository {
     return categories;
   }
 }
+

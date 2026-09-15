@@ -7,7 +7,7 @@ import 'services/translation_service.dart';
 import 'data/phrase_repository.dart';
 import 'data/sign_repository.dart';
 import 'package:theone/core/services/ocr_service.dart';
-import 'package:theone/core/services/speech_input_service.dart';
+
 
 class CommunicationController {
   final PhraseRepository _phraseRepository;

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:theone/features/communication/communication_controller.dart';
-import 'package:theone/features/communication/ui/widgets/emergency_phrase_bar.dart';
+
 import 'package:theone/features/communication/ui/widgets/mock_banner.dart';
-import 'package:theone/features/communication/ui/widgets/accessible_button.dart';
+
 import 'screens/phrase_board_screen.dart';
 import 'screens/intent_composer_screen.dart';
 import 'screens/menu_ocr_assist_screen.dart';

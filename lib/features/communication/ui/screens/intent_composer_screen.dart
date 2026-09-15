@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:theone/core/models/confidence_state.dart';
+
 import '../../models/intent_result.dart';
 import '../../services/intent_parser_service.dart';
 import '../widgets/confidence_badge.dart';

@@ -4,7 +4,7 @@ import 'package:theone/core/models/confidence_state.dart';
 
 class IntentParserService {
   IntentResult parse(String input) {
-    final normalized = TamilEnglishNormalizer.normalize(input);
+    
     final keywords = TamilEnglishNormalizer.extractKeywords(input);
 
     if (keywords.isEmpty) {

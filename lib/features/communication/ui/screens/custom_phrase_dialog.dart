@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../models/phrase_item.dart';
 
 class CustomPhraseDialog extends StatefulWidget {
@@ -72,14 +72,14 @@ class _CustomPhraseDialogState extends State<CustomPhraseDialog> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: _selectedCategory,
+                initialValue: _selectedCategory,
                 decoration: const InputDecoration(
                   labelText: 'Category',
                   border: OutlineInputBorder(),
                 ),
                 items: _categories.map((category) {
                   return DropdownMenuItem(
-                    value: category,
+                    initialValue: category,
                     child: Text(category.capitalize()),
                   );
                 }).toList(),
@@ -145,3 +145,4 @@ extension StringExtension on String {
     return '${this[0].toUpperCase()}${substring(1)}';
   }
 }
+

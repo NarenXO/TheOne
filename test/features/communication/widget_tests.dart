@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:theone/features/communication/ui/widgets/emergency_phrase_bar.dart';
 import 'package:theone/features/communication/ui/widgets/confidence_badge.dart';
@@ -14,7 +14,7 @@ void main() {
           id: 'em_1',
           category: 'emergency',
           textEn: 'I need help immediately.',
-          textTa: 'எனக்கு உடனே உதவி தேவை.',
+          textTa: 'à®Žà®©à®•à¯à®•à¯ à®‰à®Ÿà®©à¯‡ à®‰à®¤à®µà®¿ à®¤à¯‡à®µà¯ˆ.',
           keywords: ['help', 'emergency'],
         ),
       ];
@@ -33,7 +33,7 @@ void main() {
       );
 
       expect(find.text('I need help immediately.'), findsOneWidget);
-      expect(find.text('எனக்கு உடனே உதவி தேவை.'), findsOneWidget);
+      expect(find.text('à®Žà®©à®•à¯à®•à¯ à®‰à®Ÿà®©à¯‡ à®‰à®¤à®µà®¿ à®¤à¯‡à®µà¯ˆ.'), findsOneWidget);
     });
 
     testWidgets('EmergencyPhraseBar should handle empty list', (tester) async {
@@ -170,3 +170,4 @@ void main() {
     });
   });
 }
+
