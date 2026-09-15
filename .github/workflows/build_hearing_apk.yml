@@ -27,11 +27,25 @@ jobs:
           channel: 'stable'
           cache: false
       
+      - name: Install Android SDK
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget unzip
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
+          unzip -q /tmp/cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
+          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          yes | sdkmanager --licenses > /dev/null 2>&1
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1
+          flutter config --android-sdk $ANDROID_HOME
+      
       - name: Get dependencies
         run: flutter pub get
       
       - name: Build APK
-        run: flutter build apk --debug -t lib/hearing_preview.dart
+        run: flutter build apk --debug -t lib/hearing_preview.dart --no-tree-shake-icons
       
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
