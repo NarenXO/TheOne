@@ -27,15 +27,14 @@ class _HearingAssistScreenState extends State<HearingAssistScreen> {
   final HapticServiceImpl _hapticService = HapticServiceImpl();
   final SessionStorage _sessionStorage = SessionStorage();
 
-  final MockSpeechRecognitionService _mockSpeechService = MockSpeechRecognitionService();
-  final MockSoundClassifierService _mockSoundService = MockSoundClassifierService();
-  final MockSpeakerTrackerService _mockSpeakerService = MockSpeakerTrackerService();
-  final MockToneDetectionService _mockToneService = MockToneDetectionService();
+  final RealSpeechRecognitionService _speechService = RealSpeechRecognitionService();
+  final RealSoundClassifierService _soundService = RealSoundClassifierService();
+  final RealSpeakerTrackerService _speakerService = RealSpeakerTrackerService();
+  final RealToneDetectionService _toneService = RealToneDetectionService();
 
   HearingSettings _settings = HearingSettings();
   bool _isFrozen = false;
   bool _showRewind = false;
-  bool _useMockServices = true;
   SoundEvent? _latestDangerSound;
   bool _showDangerAlert = true;
 
@@ -51,57 +50,54 @@ class _HearingAssistScreenState extends State<HearingAssistScreen> {
   }
 
   void _initializeServices() {
-    if (_useMockServices) {
-      _mockSpeechService.transcriptStream.listen((segment) {
-        _captionBuffer.addSegment(segment);
-        _historyService.addSegment(segment);
-        _speakerTracker.getOrCreateSpeaker(segment.speakerId);
-        _speakerTracker.setCurrentSpeaker(segment.speakerId);
+    _speechService.transcriptStream.listen((segment) {
+      _captionBuffer.addSegment(segment);
+      _historyService.addSegment(segment);
+      _speakerTracker.getOrCreateSpeaker(segment.speakerId);
+      _speakerTracker.setCurrentSpeaker(segment.speakerId);
+      
+      if (!segment.isPartial) {
+        final evidence = HearingEvidenceAdapter.fromTranscriptSegment(segment);
+        _sessionStorage.saveEvidence(evidence);
         
-        if (!segment.isPartial) {
-          final evidence = HearingEvidenceAdapter.fromTranscriptSegment(segment);
-          _sessionStorage.saveEvidence(evidence);
-          
+        if (_settings.hapticAlertsEnabled) {
+          if (segment.isLowConfidence) {
+            _hapticService.uncertain();
+          } else {
+            _hapticService.verified();
+          }
+        }
+      }
+      
+      if (!_isFrozen) {
+        _displaySegments.add(segment);
+        _scrollToBottom();
+      }
+      
+      setState(() {});
+    });
+
+    _soundService.soundStream.listen((sound) {
+      setState(() {
+        if (sound.isDanger) {
+          _latestDangerSound = sound;
+          _showDangerAlert = true;
           if (_settings.hapticAlertsEnabled) {
-            if (segment.isLowConfidence) {
-              _hapticService.uncertain();
-            } else {
-              _hapticService.verified();
-            }
+            _hapticService.warning();
           }
         }
-        
-        if (!_isFrozen) {
-          _displaySegments.add(segment);
-          _scrollToBottom();
-        }
-        
-        setState(() {});
       });
+    });
 
-      _mockSoundService.soundStream.listen((sound) {
-        setState(() {
-          if (sound.isDanger) {
-            _latestDangerSound = sound;
-            _showDangerAlert = true;
-            if (_settings.hapticAlertsEnabled) {
-              _hapticService.warning();
-            }
-          }
-        });
+    _speakerService.speakerChangeStream.listen((speakerId) {
+      setState(() {
+        _speakerTracker.setCurrentSpeaker(speakerId);
       });
+    });
 
-      _mockSpeakerService.speakerChangeStream.listen((speakerId) {
-        setState(() {
-          _speakerTracker.setCurrentSpeaker(speakerId);
-        });
-      });
-
-      _mockSpeechService.startListening();
-      _mockSoundService.startClassification();
-      _mockSpeakerService.startTracking();
-      _mockToneService.startDetection();
-    }
+    _speechService.startListening();
+    _soundService.startClassification();
+    _speakerService.startTracking();
   }
 
   void _scrollToBottom() {
@@ -120,9 +116,9 @@ class _HearingAssistScreenState extends State<HearingAssistScreen> {
     setState(() {
       _isFrozen = !_isFrozen;
       if (_isFrozen) {
-        _mockSpeechService.freeze();
+        _speechService.freeze();
       } else {
-        _mockSpeechService.resume();
+        _speechService.resume();
         _displaySegments.clear();
         _displaySegments.addAll(_captionBuffer.getLiveStream());
         _scrollToBottom();
@@ -267,7 +263,7 @@ class _HearingAssistScreenState extends State<HearingAssistScreen> {
   }
 
   Widget _buildStatusIndicator() {
-    final isActive = _mockSpeechService.isListening && !_isFrozen;
+    final isActive = _speechService.isListening && !_isFrozen;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -620,35 +616,6 @@ class _HearingAssistScreenState extends State<HearingAssistScreen> {
               label: const Text('Rename Speakers'),
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                const Text('Mock: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                Switch(
-                  value: _useMockServices,
-                  onChanged: (value) {
-                    setState(() {
-                      _useMockServices = value;
-                      if (value) {
-                        _initializeServices();
-                      } else {
-                        _mockSpeechService.stopListening();
-                        _mockSoundService.stopClassification();
-                        _mockSpeakerService.stopTracking();
-                        _mockToneService.stopDetection();
-                      }
-                    });
-                  },
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -656,10 +623,10 @@ class _HearingAssistScreenState extends State<HearingAssistScreen> {
 
   @override
   void dispose() {
-    _mockSpeechService.dispose();
-    _mockSoundService.dispose();
-    _mockSpeakerService.dispose();
-    _mockToneService.dispose();
+    _speechService.dispose();
+    _soundService.dispose();
+    _speakerService.dispose();
+    _toneService.dispose();
     _scrollController.dispose();
     super.dispose();
   }

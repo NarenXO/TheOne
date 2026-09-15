@@ -56,14 +56,15 @@ void main() {
       expect(find.text('Rename Speakers'), findsOneWidget);
     });
 
-    testWidgets('should have mock service toggle', (tester) async {
+    testWidgets('should not have mock service toggle (uses real services)', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: HearingAssistScreen(autoInitializeServices: false),
         ),
       );
 
-      expect(find.byType(Switch), findsOneWidget);
+      // Mock toggle removed - now uses real services
+      expect(find.byType(Switch), findsNothing);
     });
   });
 }
