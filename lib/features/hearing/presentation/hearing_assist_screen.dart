@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../domain/models/models.dart';
 import '../domain/services/services.dart';
 import '../data/mock_hearing_services.dart';
+import '../../../../core/services/impl/haptic_service_impl.dart';
+import '../../../../core/storage/session_storage.dart';
 import 'hearing_settings_sheet.dart';
 import 'caption_history_sheet.dart';
 import 'speaker_rename_dialog.dart';
@@ -22,6 +24,8 @@ class _HearingAssistScreenState extends State<HearingAssistScreen> {
   final CaptionBuffer _captionBuffer = CaptionBuffer();
   final CaptionHistoryService _historyService = CaptionHistoryService();
   final SpeakerTrackerService _speakerTracker = SpeakerTrackerService();
+  final HapticServiceImpl _hapticService = HapticServiceImpl();
+  final SessionStorage _sessionStorage = SessionStorage();
 
   final MockSpeechRecognitionService _mockSpeechService = MockSpeechRecognitionService();
   final MockSoundClassifierService _mockSoundService = MockSoundClassifierService();
@@ -49,16 +53,30 @@ class _HearingAssistScreenState extends State<HearingAssistScreen> {
   void _initializeServices() {
     if (_useMockServices) {
       _mockSpeechService.transcriptStream.listen((segment) {
-        setState(() {
-          _captionBuffer.addSegment(segment);
-          _historyService.addSegment(segment);
-          _speakerTracker.getOrCreateSpeaker(segment.speakerId);
-          _speakerTracker.setCurrentSpeaker(segment.speakerId);
-          if (!_isFrozen) {
-            _displaySegments.add(segment);
-            _scrollToBottom();
+        _captionBuffer.addSegment(segment);
+        _historyService.addSegment(segment);
+        _speakerTracker.getOrCreateSpeaker(segment.speakerId);
+        _speakerTracker.setCurrentSpeaker(segment.speakerId);
+        
+        if (!segment.isPartial) {
+          final evidence = HearingEvidenceAdapter.fromTranscriptSegment(segment);
+          _sessionStorage.saveEvidence(evidence);
+          
+          if (_settings.hapticAlertsEnabled) {
+            if (segment.isLowConfidence) {
+              _hapticService.uncertain();
+            } else {
+              _hapticService.verified();
+            }
           }
-        });
+        }
+        
+        if (!_isFrozen) {
+          _displaySegments.add(segment);
+          _scrollToBottom();
+        }
+        
+        setState(() {});
       });
 
       _mockSoundService.soundStream.listen((sound) {
@@ -66,6 +84,9 @@ class _HearingAssistScreenState extends State<HearingAssistScreen> {
           if (sound.isDanger) {
             _latestDangerSound = sound;
             _showDangerAlert = true;
+            if (_settings.hapticAlertsEnabled) {
+              _hapticService.warning();
+            }
           }
         });
       });
