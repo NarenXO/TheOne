@@ -18,6 +18,7 @@ import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/torch_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/storage/session_storage.dart';
+import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/evidence_card.dart';
 import 'vision_pipeline.dart';
@@ -126,6 +127,7 @@ class _VisionScreenState extends State<VisionScreen> {
         }
       }
       setState(() => _isTorchOn = nextState);
+      AppLogger.i('TORCH', 'Toggled flashlight state: $nextState');
     } catch (e) {
       // Fallback handling if flash unavailable
     }
@@ -222,6 +224,7 @@ class _VisionScreenState extends State<VisionScreen> {
       return;
     }
     try {
+      AppLogger.i('VISION', 'Starting live camera scan...');
       setState(() => _statusLine = 'Scanning...');
       final file = await _cameraController!.takePicture();
       final bytes = await file.readAsBytes();

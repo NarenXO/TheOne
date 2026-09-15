@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
+import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
 
 class CommunicationScreen extends StatefulWidget {
@@ -93,6 +94,7 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   }
 
   void _speakPhrase(String text) async {
+    AppLogger.i('COMMUNICATION', 'Speaking quick phrase: "$text"');
     await _ttsService.speak(text);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -177,11 +179,13 @@ class _CommunicationScreenState extends State<CommunicationScreen>
       if (!out.trim().endsWith('.') && !out.trim().endsWith('?')) out = '$out.';
     }
 
+    AppLogger.i('COMMUNICATION', 'Intent transformed: "$input" -> "$out"');
     setState(() => _reformattedSentence = out);
   }
 
   // Capture other person's spoken response
   Future<void> _listenToReply() async {
+    AppLogger.i('COMMUNICATION', 'Listening for other person response...');
     setState(() {
       _isListeningToReply = true;
       _lastOtherPersonReply = 'Listening... please ask them to speak clearly';

@@ -1,4 +1,5 @@
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import '../../utils/app_logger.dart';
 import '../speech_input_service.dart';
 
 class SpeechInputServiceImpl implements SpeechInputService {
@@ -21,6 +22,8 @@ class SpeechInputServiceImpl implements SpeechInputService {
     if (!ready) {
       return SpeechResult(text: "", confidence: 0.0, languageCode: "en");
     }
+
+    AppLogger.i('STT', 'Listening for microphone speech input...');
 
     String recognizedText = "";
     double speechConfidence = 0.85;
@@ -49,6 +52,8 @@ class SpeechInputServiceImpl implements SpeechInputService {
       await Future.delayed(const Duration(milliseconds: 250));
     }
     await _speech.stop();
+
+    AppLogger.i('STT', 'Captured speech: "$recognizedText" (conf: $speechConfidence)');
 
     return SpeechResult(
       text: recognizedText,

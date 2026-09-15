@@ -4,7 +4,7 @@ class AppColors {
   static const Color primary = Color(0xFF0B3D91); // strong blue
   static const Color primaryDark = Color(0xFF062A66);
   static const Color accent = Color(0xFF1565C0);
-  static const Color surface = Color(0xFFE8F1FB); // light blue
+  static const Color surface = Color(0xFFD5E3F8); // distinct light blue background
   static const Color card = Colors.white;
   static const Color textPrimary = Color(0xFF0F172A); // near black
   static const Color textSecondary = Color(0xFF475569);

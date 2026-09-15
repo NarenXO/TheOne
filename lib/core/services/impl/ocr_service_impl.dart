@@ -1,4 +1,5 @@
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import '../../utils/app_logger.dart';
 import '../ocr_service.dart';
 
 class OcrServiceImpl implements OcrService {
@@ -23,6 +24,10 @@ class OcrServiceImpl implements OcrService {
             ));
           }
         }
+      }
+      AppLogger.i('OCR', 'Processed image, found ${results.length} text lines');
+      for (final r in results) {
+        AppLogger.i('OCR', ' Line: "${r.text}" (conf: ${r.confidence})');
       }
       return results;
     } catch (_) {

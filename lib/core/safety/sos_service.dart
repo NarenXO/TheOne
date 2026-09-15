@@ -1,6 +1,7 @@
 import 'package:battery_plus/battery_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../utils/app_logger.dart';
 
 class SosService {
   final Battery _battery = Battery();
@@ -57,6 +58,7 @@ class SosService {
   /// Opens native SMS app prefilled with emergency message.
   /// This is real SMS flow (user confirms send on Android).
   Future<bool> sendSosSms({String? contact}) async {
+    AppLogger.w('SOS', 'Emergency Auto-SOS triggered via SMS!');
     final message = await generateSosMessage();
     final number = contact ?? emergencyContact;
     final uri = Uri.parse(

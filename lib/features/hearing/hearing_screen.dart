@@ -6,6 +6,7 @@ import '../../core/models/evidence_type.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/storage/session_storage.dart';
+import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
 
 class CaptionLine {
@@ -134,6 +135,8 @@ class _HearingScreenState extends State<HearingScreen> {
       timestamp: DateTime.now(),
     );
 
+    AppLogger.i('HEARING', 'Caption line generated: "$text" (Speaker $_currentSpeakerIndex, Tone: $tone)');
+
     setState(() {
       _captions.add(newCaption);
       // Alternate speaker heuristically on longer pauses
@@ -162,6 +165,7 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   void _triggerDangerSoundAlert(String message) async {
+    AppLogger.w('HEARING', 'AMBIENT DANGER DETECTED: $message');
     setState(() {
       _isAmbientDangerActive = true;
       _dangerAlertMessage = message;

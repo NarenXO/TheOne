@@ -1,4 +1,5 @@
 import '../models/confidence_state.dart';
+import '../utils/app_logger.dart';
 import 'evidence.dart';
 import 'evidence_bundle.dart';
 import 'evidence_thresholds.dart';
@@ -9,11 +10,15 @@ class ZeroAssumptionEngine {
     required String query,
     required EvidenceBundle bundle,
   }) {
+    AppLogger.i('ENGINE', 'Evaluating query: "$query" with ${bundle.length} evidence items');
+
     if (bundle.isEmpty) {
-      return VerificationResult(
+      final result = VerificationResult(
         state: ConfidenceState.insufficient,
         message: "I can't verify that from what I can see or hear. Please scan again.",
       );
+      AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
+      return result;
     }
 
     // Prefer OCR and speech for verification answers
@@ -59,11 +64,13 @@ class ZeroAssumptionEngine {
       }).toList();
       if (strongRooms.length > 1) {
         final labels = strongRooms.map((e) => 'ROOM ${e.key}').join(' vs ');
-        return VerificationResult(
+        final result = VerificationResult(
           state: ConfidenceState.conflict,
           message: "I found conflicting information: $labels. Please rescan or verify.",
           conflicting: strongRooms.expand((e) => e.value).toList(),
         );
+        AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
+        return result;
       }
     }
 
@@ -75,33 +82,41 @@ class ZeroAssumptionEngine {
     final conf = top.confidence;
 
     if (EvidenceThresholds.isStrong(conf) || conf >= 0.80) {
-      return VerificationResult(
+      final result = VerificationResult(
         state: ConfidenceState.verified,
         message: "Verified. ${top.value}",
         supporting: focused,
       );
+      AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
+      return result;
     }
     if (conf >= 0.50) {
-      return VerificationResult(
+      final result = VerificationResult(
         state: ConfidenceState.uncertain,
         message: "I think I see ${top.value}, but confidence is moderate. Please rescan if needed.",
         supporting: focused,
       );
+      AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
+      return result;
     }
 
     // If we still have readable OCR text, report it instead of dead-end weak message
     final ocrText = focused.where((e) => e.type.name == 'ocr').map((e) => e.value).toList();
     if (ocrText.isNotEmpty) {
-      return VerificationResult(
+      final result = VerificationResult(
         state: ConfidenceState.uncertain,
         message: "I can read: ${ocrText.take(3).join(' | ')}. Please confirm.",
         supporting: focused,
       );
+      AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
+      return result;
     }
 
-    return VerificationResult(
+    final result = VerificationResult(
       state: ConfidenceState.insufficient,
       message: "Evidence too weak to verify. Please move closer and scan again.",
     );
+    AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
+    return result;
   }
 }
