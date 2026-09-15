@@ -183,11 +183,6 @@ class _HearingScreenState extends State<HearingScreen> {
     });
   }
 
-  // Demo shortcut for judges to simulate ambient danger sound detection
-  void _simulateDangerAlarm() {
-    _triggerDangerSoundAlert("AMBIENT DANGER DETECTED: Fire Alarm / Loud Shouting (96% Confidence)");
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -266,19 +261,6 @@ class _HearingScreenState extends State<HearingScreen> {
                         label: Text(
                           _isListening ? "STOP CAPTIONS" : "START / STOP CAPTIONS",
                           style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _simulateDangerAlarm,
-                        icon: const Icon(Icons.campaign),
-                        label: const Text("DEMO ALARM"),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.danger,
-                          side: const BorderSide(color: AppColors.danger),
-                          minimumSize: const Size.fromHeight(48),
                         ),
                       ),
                     ),

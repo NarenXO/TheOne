@@ -9,7 +9,6 @@ import '../../core/evidence/relevance_engine.dart';
 import '../../core/evidence/zero_assumption_engine.dart';
 import '../../core/evidence/verification_result.dart';
 import '../../core/models/confidence_state.dart';
-import '../../core/models/evidence_source.dart';
 import '../../core/models/evidence_type.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/object_detection_service_impl.dart';
@@ -171,37 +170,6 @@ class _VisionScreenState extends State<VisionScreen> {
         await _hapticService.conflict();
         break;
     }
-  }
-
-  // --- FLAGSHIP DEMO SCENARIOS ---
-  void _runVerifiedDemo() {
-    final bundle = EvidenceBundle([
-      Evidence(
-        source: EvidenceSource.camera,
-        type: EvidenceType.ocr,
-        value: "ROOM 204",
-        confidence: 0.98,
-      ),
-    ]);
-    _processVerification(bundle, _queryController.text);
-  }
-
-  void _runConflictDemo() {
-    final bundle = EvidenceBundle([
-      Evidence(
-        source: EvidenceSource.camera,
-        type: EvidenceType.ocr,
-        value: "ROOM 204",
-        confidence: 0.98,
-      ),
-      Evidence(
-        source: EvidenceSource.microphone,
-        type: EvidenceType.speech,
-        value: "ROOM 302",
-        confidence: 0.92,
-      ),
-    ]);
-    _processVerification(bundle, _queryController.text);
   }
 
   Future<void> _voiceAsk() async {
@@ -443,52 +411,6 @@ class _VisionScreenState extends State<VisionScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          // Button Row 2
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _runVerifiedDemo,
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text("DEMO VERIFY 204"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryDark,
-                      minimumSize: const Size.fromHeight(48),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _runConflictDemo,
-                    icon: const Icon(Icons.warning_amber_outlined),
-                    label: const Text("DEMO CONFLICT"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.danger,
-                      minimumSize: const Size.fromHeight(48),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Helper Text
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: const Text(
-              "Live scan uses real camera. Demo buttons show engine states for judges.",
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
           const SizedBox(height: 12),
           // Result Banner
           if (_lastResult != null)
@@ -536,7 +458,7 @@ class _VisionScreenState extends State<VisionScreen> {
                     child: Padding(
                       padding: EdgeInsets.all(20),
                       child: Text(
-                        "No evidence scanned yet. Run a query or demo.",
+                        "No evidence scanned yet. Run a query or scan.",
                         style: TextStyle(
                           fontSize: 16,
                           color: AppColors.textSecondary,
