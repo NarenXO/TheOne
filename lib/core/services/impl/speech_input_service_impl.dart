@@ -3,33 +3,65 @@ import 'dart:async';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../speech_input_service.dart';
 import '../../utils/app_logger.dart';
+import 'tts_service_impl.dart';
 
 class SpeechInputServiceImpl implements SpeechInputService {
-  final stt.SpeechToText _speech = stt.SpeechToText();
+  stt.SpeechToText _speech = stt.SpeechToText();
   bool _initialized = false;
-  bool _isListeningStream = false;
+  bool _isBusy = false;
 
-  bool get isListening => _speech.isListening || _isListeningStream;
+  bool get isListening => _speech.isListening;
 
   Future<bool> init() async {
     if (!_initialized) {
-      _initialized = await _speech.initialize(
-        onError: (e) => AppLogger.e('STT', 'Error: ${e.errorMsg}'),
-        onStatus: (s) => AppLogger.i('STT', 'Status: $s'),
-      );
+      try {
+        _initialized = await _speech.initialize(
+          onError: (e) {
+            AppLogger.e('STT', 'Native Error: ${e.errorMsg}');
+          },
+          onStatus: (s) => AppLogger.i('STT', 'Status: $s'),
+        );
+      } catch (e) {
+        AppLogger.e('STT', 'Init exception: $e');
+        _initialized = false;
+      }
     }
     return _initialized;
   }
 
-  // ONE-SHOT (For Voice Q&A & Onboarding)
+  Future<void> _resetInstance() async {
+    try {
+      if (_speech.isListening) await _speech.stop();
+    } catch (_) {}
+    _speech = stt.SpeechToText();
+    _initialized = false;
+    await Future.delayed(const Duration(milliseconds: 600));
+    await init();
+  }
+
+  // ONE-SHOT VOICE QUERY (With Session Lock & Timeout Fallback)
   @override
   Future<SpeechResult> listen() async {
+    // Pause if TTS is currently speaking out loud
+    if (TtsServiceImpl.isSpeaking) {
+      await Future.delayed(const Duration(milliseconds: 800));
+    }
+
+    if (_isBusy) {
+      AppLogger.w('STT', 'STT busy, waiting for lock...');
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    _isBusy = true;
     final ok = await init();
-    if (!ok) return SpeechResult(text: '', confidence: 0.0, languageCode: 'en_IN');
+    if (!ok) {
+      _isBusy = false;
+      return SpeechResult(text: '', confidence: 0.0, languageCode: 'en_IN');
+    }
 
     if (_speech.isListening) {
       await _speech.stop();
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 400));
     }
 
     final completer = Completer<SpeechResult>();
@@ -50,52 +82,38 @@ class SpeechInputServiceImpl implements SpeechInputService {
         localeId: 'en_IN',
       );
     } catch (e) {
-      AppLogger.e('STT', 'Listen error: $e');
+      AppLogger.e('STT', 'Listen exception: $e');
+      await _resetInstance();
+      _isBusy = false;
       return SpeechResult(text: '', confidence: 0.0, languageCode: 'en_IN');
     }
 
-    return completer.future.timeout(
+    final result = await completer.future.timeout(
       const Duration(seconds: 9),
       onTimeout: () {
         return SpeechResult(text: latest, confidence: latest.isEmpty ? 0.0 : conf, languageCode: 'en_IN');
       },
-    ).whenComplete(() async {
-      try { if (_speech.isListening) await _speech.stop(); } catch (_) {}
-    });
+    );
+
+    try { if (_speech.isListening) await _speech.stop(); } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 300));
+    _isBusy = false;
+
+    AppLogger.i('STT', 'One-shot final captured: "${result.text}" (conf: ${result.confidence})');
+    return result;
   }
 
-  // CONTINUOUS STREAMING FOR WAKE WORD ("Hey Rook")
-  Future<void> startContinuousStream(Function(String text, bool isFinal) onResult) async {
-    final ok = await init();
-    if (!ok) return;
-
-    if (_speech.isListening) {
-      await _speech.stop();
-      await Future.delayed(const Duration(milliseconds: 200));
-    }
-
-    try {
-      await _speech.listen(
-        onResult: (res) => onResult(res.recognizedWords, res.finalResult),
-        partialResults: true,
-        cancelOnError: false,
-        listenMode: stt.ListenMode.dictation,
-        localeId: 'en_IN',
-      );
-    } catch (e) {
-      AppLogger.e('STT', 'Stream error: $e');
-    }
-  }
-
-  // STREAMING CAPTIONS (No system chime thrashing)
+  // CONTINUOUS CAPTION / WAKE STREAM
   Future<void> startCaptionStream({
     required Function(String partialText) onPartial,
     required Function(String finalText, double confidence) onFinal,
   }) async {
+    if (TtsServiceImpl.isSpeaking) {
+      await Future.delayed(const Duration(milliseconds: 1000));
+    }
+
     final ok = await init();
     if (!ok) return;
-
-    _isListeningStream = true;
 
     if (_speech.isListening) {
       await _speech.stop();
@@ -114,22 +132,51 @@ class SpeechInputServiceImpl implements SpeechInputService {
             onPartial(text);
           }
         },
-        listenFor: const Duration(minutes: 30),
-        pauseFor: const Duration(seconds: 6),
+        listenFor: const Duration(minutes: 10),
+        pauseFor: const Duration(seconds: 5),
         partialResults: true,
         cancelOnError: false,
         listenMode: stt.ListenMode.dictation,
         localeId: 'en_IN',
       );
     } catch (e) {
-      AppLogger.e('STT', 'Caption stream error: $e');
+      AppLogger.e('STT', 'Stream exception: $e');
+      await _resetInstance();
+    }
+  }
+
+  // CONTINUOUS STREAMING FOR WAKE WORD ("Hey Rook")
+  Future<void> startContinuousStream(Function(String text, bool isFinal) onResult) async {
+    if (TtsServiceImpl.isSpeaking) {
+      await Future.delayed(const Duration(milliseconds: 1000));
+    }
+
+    final ok = await init();
+    if (!ok) return;
+
+    if (_speech.isListening) {
+      await _speech.stop();
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    try {
+      await _speech.listen(
+        onResult: (res) => onResult(res.recognizedWords, res.finalResult),
+        partialResults: true,
+        cancelOnError: false,
+        listenMode: stt.ListenMode.dictation,
+        localeId: 'en_IN',
+      );
+    } catch (e) {
+      AppLogger.e('STT', 'Continuous stream exception: $e');
+      await _resetInstance();
     }
   }
 
   @override
   Future<void> stop() async {
-    _isListeningStream = false;
     try {
+      _isBusy = false;
       if (_speech.isListening) await _speech.stop();
     } catch (_) {}
   }

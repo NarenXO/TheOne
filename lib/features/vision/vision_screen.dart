@@ -50,7 +50,7 @@ class _VisionScreenState extends State<VisionScreen> {
 
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
-  String _statusLine = "Listening for 'Hey Rook' or 'Hello Rook'...";
+  String _statusLine = "🟢 Listening for 'Hey Rook' or tap Ask Rook...";
   bool _isScanning = false;
   bool _isWakeWordLooping = false;
 
@@ -128,12 +128,32 @@ class _VisionScreenState extends State<VisionScreen> {
     }
   }
 
+  Future<void> _askRookVoice() async {
+    if (_isScanning) return;
+
+    setState(() => _statusLine = "🎙️ Listening to your question...");
+    final speechResult = await _speechService.listen();
+    final question = speechResult.text.trim();
+
+    if (question.isEmpty) {
+      setState(() => _statusLine = "🟢 No voice heard. Tap Ask Rook and speak clearly.");
+      await _ttsService.speak("I did not hear a question. Please tap Ask Rook and speak clearly.");
+      return;
+    }
+
+    setState(() => _statusLine = 'Heard: "$question" — 📷 Scanning camera...');
+    await _scanLiveCamera(question);
+  }
+
   Future<void> _scanLiveCamera([String? question]) async {
     if (_cameraController == null || !_cameraController!.value.isInitialized || _isScanning) {
       return;
     }
 
-    setState(() => _isScanning = true);
+    setState(() {
+      _isScanning = true;
+      _statusLine = "📷 Scanning camera & analyzing evidence...";
+    });
 
     try {
       if (_cameraController!.value.isStreamingImages) {
@@ -150,21 +170,21 @@ class _VisionScreenState extends State<VisionScreen> {
         estimatedBrightness: brightness,
       );
 
-      final query = question ?? "What is in front of me?";
+      final query = (question != null && question.isNotEmpty) ? question : "What is in front of me?";
       final rankedItems = _relevanceEngine.rank(query: query, evidence: bundle.items);
       final result = _zeroAssumptionEngine.verify(query: query, bundle: EvidenceBundle(rankedItems));
 
       setState(() {
         _lastResult = result;
         _activeEvidence = rankedItems;
-        _statusLine = "Listening for 'Hey Rook'...";
+        _statusLine = "🔊 Rook Speaking...";
       });
 
       for (final e in rankedItems) {
         await _sessionStorage.saveEvidence(e);
       }
 
-      // Speak verified answer out loud to blind user
+      // ALWAYS Speak verified answer out loud via TTS
       await _ttsService.speak(result.message);
 
       if (result.state == ConfidenceState.verified) {
@@ -174,8 +194,15 @@ class _VisionScreenState extends State<VisionScreen> {
       }
     } catch (e) {
       AppLogger.e('VISION', 'Scan error: $e');
+      setState(() => _statusLine = "Scan error: $e. Tap Ask Rook to retry.");
+      await _ttsService.speak("Camera scan encountered an error. Please try again.");
     } finally {
-      if (mounted) setState(() => _isScanning = false);
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+          _statusLine = "🟢 Listening for 'Hey Rook' or tap Ask Rook...";
+        });
+      }
     }
   }
 
@@ -235,7 +262,7 @@ class _VisionScreenState extends State<VisionScreen> {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: SizedBox(
-                  height: 260,
+                  height: 240,
                   child: AspectRatio(
                     aspectRatio: 3 / 4,
                     child: _isCameraInitialized && _cameraController != null
@@ -285,17 +312,40 @@ class _VisionScreenState extends State<VisionScreen> {
 
           const SizedBox(height: 10),
 
+          // Primary Voice Button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                minimumSize: const Size(double.infinity, 52),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _askRookVoice,
+              icon: const Icon(Icons.mic, color: Colors.white, size: 28),
+              label: const Text(
+                "ASK ROOK / TAP TO SPEAK",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
           // Verification Result Banner
           if (_lastResult != null)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               margin: const EdgeInsets.symmetric(horizontal: 16),
-              color: _lastResult!.state == ConfidenceState.verified
-                  ? AppColors.success.withAlpha(51)
-                  : _lastResult!.state == ConfidenceState.conflict
-                      ? AppColors.danger.withAlpha(51)
-                      : AppColors.warning.withAlpha(51),
+              decoration: BoxDecoration(
+                color: _lastResult!.state == ConfidenceState.verified
+                    ? AppColors.success.withValues(alpha: 0.2)
+                    : _lastResult!.state == ConfidenceState.conflict
+                        ? AppColors.danger.withValues(alpha: 0.2)
+                        : AppColors.warning.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
               child: Text(
                 _lastResult!.message,
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -310,7 +360,7 @@ class _VisionScreenState extends State<VisionScreen> {
                     child: Padding(
                       padding: EdgeInsets.all(24.0),
                       child: Text(
-                        "Say 'Hello Rook, what is in front of me?' to auto-scan camera and speak answer.",
+                        "Say 'Hello Rook, what is in front of me?' or tap Ask Rook to scan camera.",
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
                       ),

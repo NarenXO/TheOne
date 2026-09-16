@@ -6,6 +6,7 @@ import '../../core/models/evidence_source.dart';
 import '../../core/models/evidence_type.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
+import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/storage/preferences_service.dart';
 import '../../core/storage/session_storage.dart';
 import '../../core/utils/app_logger.dart';
@@ -99,22 +100,29 @@ class _HearingScreenState extends State<HearingScreen> {
       _activePartialText = "";
     });
 
-    await _speechService.startCaptionStream(
-      onPartial: (partialText) {
-        if (mounted && _isListening) {
-          setState(() => _activePartialText = partialText);
-          _scrollToBottom();
-        }
-      },
-      onFinal: (finalText, confidence) {
-        if (mounted && _isListening && finalText.trim().isNotEmpty) {
-          setState(() {
-            _activePartialText = "";
-          });
-          _processSpeechInput(finalText, confidence);
-        }
-      },
-    );
+    _runCaptionStreamLoop();
+  }
+
+  void _runCaptionStreamLoop() async {
+    while (_isListening && mounted) {
+      if (!TtsServiceImpl.isSpeaking) {
+        await _speechService.startCaptionStream(
+          onPartial: (partialText) {
+            if (mounted && _isListening) {
+              setState(() => _activePartialText = partialText);
+              _scrollToBottom();
+            }
+          },
+          onFinal: (finalText, confidence) {
+            if (mounted && _isListening && finalText.trim().isNotEmpty) {
+              setState(() => _activePartialText = "");
+              _processSpeechInput(finalText, confidence);
+            }
+          },
+        );
+      }
+      await Future.delayed(const Duration(milliseconds: 600));
+    }
   }
 
   void _stopListening() async {
