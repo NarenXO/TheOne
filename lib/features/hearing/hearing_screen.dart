@@ -86,8 +86,11 @@ class _HearingScreenState extends State<HearingScreen> {
     if (mounted) setState(() => _savedUserName = name);
   }
 
+  Timer? _rearmWatchdogTimer;
+
   @override
   void dispose() {
+    _rearmWatchdogTimer?.cancel();
     _speechService.stop();
     _scrollController.dispose();
     super.dispose();
@@ -103,6 +106,42 @@ class _HearingScreenState extends State<HearingScreen> {
     }
   }
 
+  void _startRearmWatchdog() {
+    _rearmWatchdogTimer?.cancel();
+    _rearmWatchdogTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && _isListening && _isRearming) {
+        AppLogger.w('HEARING', 'Rearm Watchdog triggered after 1.5s in re-arming state. Force restarting listening...');
+        _startContinuousListening();
+      }
+    });
+  }
+
+  void _onSttStatus(String status) {
+    AppLogger.i('HEARING_UI', 'STT status: $status');
+    if (!mounted || !_isListening) return;
+
+    if (status == 'listening') {
+      _rearmWatchdogTimer?.cancel();
+      if (mounted && _isListening) {
+        setState(() {
+          _isRearming = false;
+        });
+      }
+    } else if (status == 'notListening' || status == 'done') {
+      if (mounted && _isListening) {
+        setState(() {
+          _isRearming = true;
+        });
+      }
+      _startRearmWatchdog();
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted && _isListening) {
+          _startContinuousListening();
+        }
+      });
+    }
+  }
+
   Future<void> _startContinuousListening() async {
     final status = await Permission.microphone.request();
     if (!status.isGranted) {
@@ -115,55 +154,47 @@ class _HearingScreenState extends State<HearingScreen> {
       return;
     }
 
-    await _speechService.stop();
-    await Future.delayed(const Duration(milliseconds: 200));
-
     if (!mounted) return;
     setState(() {
       _isListening = true;
-      _isRearming = false;
+      _isRearming = true;
       _activePartialText = "";
     });
 
+    _startRearmWatchdog();
     _runCaptionStreamLoop();
   }
 
   void _runCaptionStreamLoop() async {
-    while (_isListening && mounted) {
-      if (!TtsServiceImpl.isSpeaking) {
-        if (mounted) setState(() => _isRearming = false);
-        await _speechService.startCaptionStream(
-          onPartial: (partialText) {
-            if (mounted && _isListening) {
-              setState(() {
-                _isRearming = false;
-                _activePartialText = partialText;
-              });
-              _scrollToBottom();
-            }
-          },
-          onFinal: (finalText, confidence) {
-            if (mounted && _isListening && finalText.trim().isNotEmpty) {
-              setState(() {
-                _activePartialText = "";
-                _isRearming = true;
-              });
-              _processSpeechInput(finalText, confidence);
-            }
-          },
-        );
-      }
-      if (mounted && _isListening) {
-        setState(() => _isRearming = true);
-        await Future.delayed(const Duration(milliseconds: 150));
-      }
-    }
-    if (mounted) {
-      setState(() => _isRearming = false);
+    if (!_isListening || !mounted) return;
+
+    if (!TtsServiceImpl.isSpeaking) {
+      await _speechService.startCaptionStream(
+        onPartial: (partialText) {
+          if (mounted && _isListening) {
+            setState(() {
+              _isRearming = false;
+              _activePartialText = partialText;
+            });
+            _scrollToBottom();
+          }
+        },
+        onFinal: (finalText, confidence) {
+          if (mounted && _isListening && finalText.trim().isNotEmpty) {
+            setState(() {
+              _activePartialText = "";
+              _isRearming = true;
+            });
+            _processSpeechInput(finalText, confidence);
+          }
+        },
+        onStatus: _onSttStatus,
+      );
     }
   }
 
   void _stopListening() async {
+    _rearmWatchdogTimer?.cancel();
     setState(() {
       _isListening = false;
       _isRearming = false;

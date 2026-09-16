@@ -10,6 +10,7 @@ class SpeechInputServiceImpl implements SpeechInputService {
   stt.SpeechToText _speech = stt.SpeechToText();
   bool _initialized = false;
   bool _isBusy = false;
+  Function(String status)? _onStatusListener;
 
   bool get isListening => _speech.isListening;
 
@@ -38,6 +39,7 @@ class SpeechInputServiceImpl implements SpeechInputService {
             if (s == 'done' || s == 'notListening') {
               _isBusy = false;
             }
+            _onStatusListener?.call(s);
           },
         );
       } catch (e) {
@@ -137,7 +139,9 @@ class SpeechInputServiceImpl implements SpeechInputService {
   Future<void> startCaptionStream({
     required Function(String partialText) onPartial,
     required Function(String finalText, double confidence) onFinal,
+    Function(String status)? onStatus,
   }) async {
+    _onStatusListener = onStatus;
     _isBusy = false;
     final status = await Permission.microphone.request();
     if (!status.isGranted) return;
@@ -156,28 +160,37 @@ class SpeechInputServiceImpl implements SpeechInputService {
 
     _isBusy = false;
 
-    try {
-      await _speech.listen(
-        onResult: (res) {
-          final text = res.recognizedWords.trim();
-          if (text.isEmpty) return;
+    bool success = false;
+    while (!success) {
+      try {
+        success = await _speech.listen(
+          onResult: (res) {
+            final text = res.recognizedWords.trim();
+            if (text.isEmpty) return;
 
-          if (res.finalResult) {
-            onFinal(text, res.confidence > 0 ? res.confidence : 0.85);
-          } else {
-            onPartial(text);
-          }
-        },
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 4),
-        partialResults: true,
-        cancelOnError: false,
-        listenMode: stt.ListenMode.deviceDefault,
-        localeId: 'en_IN',
-      );
-    } catch (e) {
-      AppLogger.e('STT', 'Stream exception: $e');
-      await _resetInstance();
+            if (res.finalResult) {
+              onFinal(text, res.confidence > 0 ? res.confidence : 0.85);
+            } else {
+              onPartial(text);
+            }
+          },
+          listenFor: const Duration(seconds: 30),
+          pauseFor: const Duration(seconds: 4),
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: stt.ListenMode.deviceDefault,
+          localeId: 'en_IN',
+        );
+      } catch (e) {
+        AppLogger.e('STT', 'Stream exception: $e');
+        await _resetInstance();
+        success = false;
+      }
+
+      if (!success) {
+        AppLogger.w('STT', 'Listen call returned false (busy/closing), retrying in 400ms...');
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
     }
   }
 
@@ -213,6 +226,7 @@ class SpeechInputServiceImpl implements SpeechInputService {
   Future<void> stop() async {
     try {
       _isBusy = false;
+      _onStatusListener = null;
       if (_speech.isListening) await _speech.stop();
     } catch (_) {}
   }
