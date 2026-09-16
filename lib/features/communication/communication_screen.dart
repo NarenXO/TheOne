@@ -210,41 +210,53 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   void _reformatIntentToSpeech() {
     final input = _intentInputController.text.trim();
     if (input.isEmpty) return;
+
     final lower = input.toLowerCase();
+    String out = "";
 
-    // Clean out stop words
-    String topic = input
-        .replaceAll(RegExp(r'\b(enga|irukku|nu|kekkanum|venum|pativu|sollu|solunga|pessunga)\b', caseSensitive: false), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    if (topic.isEmpty) topic = input;
-
-    String out;
-
-    if (RegExp(r"don't be sad|feel.*sad|kavalai|crying|upset").hasMatch(lower)) {
-      out = "Please don't be sad, everything will be alright.";
-    } else if (RegExp(r"happy|greetings|good night|good morning|vanakkam|hi\b|hello").hasMatch(lower)) {
-      if (lower.contains("night")) {
-        out = "Good night! Have a peaceful rest.";
-      } else if (lower.contains("morning")) {
-        out = "Good morning! Wishing you a pleasant day.";
-      } else {
-        out = "Hello! I am happy to connect with you.";
-      }
-    } else if (RegExp(r'registration|pativu|rega|room|toilet|restroom|washroom|kazi|exit|veliya|counter|desk|where|enga').hasMatch(lower)) {
-      out = topic.isEmpty
-          ? 'Excuse me, could you please tell me where to go?'
-          : 'Excuse me, could you please tell me where $topic is?';
-    } else if (RegExp(r'chai|tea|coffee|kaapi|water|thanni|tanni|food|sapadu|drink|venum').hasMatch(lower)) {
-      out = topic.isEmpty
-          ? 'I would like to request assistance, please.'
-          : 'I would like to request $topic, please.';
-    } else if (RegExp(r'how|why|what|when|who|epdi|evlo|price|cost|bill|\?').hasMatch(lower)) {
-      out = topic.isEmpty
-          ? 'Excuse me, may I ask a question?'
-          : 'Excuse me, may I ask about $topic?';
+    // Hunger / Food / Drink
+    if (lower.contains("hungry") || lower.contains("pasi") || lower.contains("sapadu") || lower.contains("saapadu") || lower.contains("food") || lower.contains("eat")) {
+      out = "I am feeling hungry, could I please get something to eat?";
+    } else if (lower.contains("chai") || lower.contains("tea") || lower.contains("coffee") || lower.contains("kaapi") || lower.contains("drink")) {
+      out = "I would like to order a warm beverage, please.";
+    } else if (lower.contains("water") || lower.contains("thanni") || lower.contains("tanni") || lower.contains("thirsty")) {
+      out = "Could I please get a bottle of drinking water?";
+    }
+    // Location / Registration / Restroom
+    else if (lower.contains("registration") || lower.contains("rega") || lower.contains("pativu") || lower.contains("counter")) {
+      out = "Excuse me, could you please tell me where the registration desk is located?";
+    } else if (lower.contains("toilet") || lower.contains("restroom") || lower.contains("washroom") || lower.contains("kazi") || lower.contains("kuzhi") || lower.contains("bathroom")) {
+      out = "Excuse me, could you please guide me to the nearest restroom?";
+    } else if (lower.contains("room") || RegExp(r'\d{2,4}').hasMatch(lower)) {
+      final match = RegExp(r'\d{2,4}').firstMatch(lower);
+      final roomNum = match != null ? "Room ${match.group(0)}" : "the room";
+      out = "Excuse me, could you please guide me to $roomNum?";
+    } else if (lower.contains("exit") || lower.contains("veliya") || lower.contains("way out")) {
+      out = "Excuse me, could you please show me where the exit is?";
+    }
+    // Emotions / Social statements
+    else if (lower.contains("sad") || lower.contains("afraid") || lower.contains("scared") || lower.contains("fear") || lower.contains("worry")) {
+      out = "Please don't be worried, everything will be alright.";
+    } else if (lower.contains("happy") || lower.contains("glad") || lower.contains("good")) {
+      out = "I am feeling very good and happy today!";
+    } else if (lower.contains("tired") || lower.contains("rest") || lower.contains("sleep")) {
+      out = "I am feeling quite tired and need a moment to rest.";
+    }
+    // Help / Bill / Transport
+    else if (lower.contains("help") || lower.contains("udavi") || lower.contains("emergency")) {
+      out = "I need immediate assistance, please help me.";
+    } else if (lower.contains("bill") || lower.contains("check") || lower.contains("evlo") || lower.contains("price") || lower.contains("cost")) {
+      out = "Could you please bring me the total bill for this?";
+    } else if (lower.contains("bus") || lower.contains("train") || lower.contains("auto") || lower.contains("cab") || lower.contains("taxi")) {
+      out = "Excuse me, where can I find transportation from here?";
+    } else if (lower.contains("thanks") || lower.contains("thank you") || lower.contains("nandri")) {
+      out = "Thank you so much for your kind help!";
+    } else if (lower.contains("hello") || lower.contains("hi ") || lower == "hi" || lower.contains("vanakkam")) {
+      out = "Hello! I hope you are having a good day.";
     } else {
-      out = 'Excuse me, could you please help me with this: $topic?';
+      // Natural transformer fallback (capitalizes first letter, turns into polite request)
+      final capitalized = input[0].toUpperCase() + input.substring(1);
+      out = "Excuse me, I would like to say: $capitalized.";
     }
 
     setState(() => _reformattedSentence = out);

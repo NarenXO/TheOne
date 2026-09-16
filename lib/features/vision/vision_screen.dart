@@ -66,10 +66,16 @@ class _VisionScreenState extends State<VisionScreen> {
   }
 
   Future<void> _initCameraAndWakeWord() async {
+    if (!mounted) return;
     await Permission.camera.request();
     await Permission.microphone.request();
 
     try {
+      if (_cameraController != null) {
+        await _cameraController!.dispose();
+        _cameraController = null;
+      }
+
       final cameras = await availableCameras();
       if (cameras.isNotEmpty) {
         final backCam = cameras.firstWhere(
@@ -89,6 +95,7 @@ class _VisionScreenState extends State<VisionScreen> {
       }
     } catch (e) {
       AppLogger.e('VISION', 'Camera init error: $e');
+      if (mounted) setState(() => _isCameraInitialized = false);
     }
 
     _startWakeWordLoop();
