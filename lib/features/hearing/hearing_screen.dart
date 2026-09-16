@@ -45,6 +45,7 @@ class HearingScreen extends StatefulWidget {
 
 class _HearingScreenState extends State<HearingScreen> {
   final SpeechInputServiceImpl _speechService = SpeechInputServiceImpl();
+  final TtsServiceImpl _ttsService = TtsServiceImpl();
   final HapticServiceImpl _hapticService = HapticServiceImpl();
   final SessionStorage _sessionStorage = SessionStorage();
 
@@ -75,6 +76,7 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   Future<void> _initPermissionsAndStartListening() async {
+    await _ttsService.stop();
     await Permission.microphone.request();
     if (mounted) {
       _startContinuousListening();
@@ -86,11 +88,8 @@ class _HearingScreenState extends State<HearingScreen> {
     if (mounted) setState(() => _savedUserName = name);
   }
 
-  Timer? _rearmWatchdogTimer;
-
   @override
   void dispose() {
-    _rearmWatchdogTimer?.cancel();
     _speechService.stop();
     _scrollController.dispose();
     super.dispose();
@@ -106,22 +105,11 @@ class _HearingScreenState extends State<HearingScreen> {
     }
   }
 
-  void _startRearmWatchdog() {
-    _rearmWatchdogTimer?.cancel();
-    _rearmWatchdogTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (mounted && _isListening && _isRearming) {
-        AppLogger.w('HEARING', 'Rearm Watchdog triggered after 1.5s in re-arming state. Force restarting listening...');
-        _startContinuousListening();
-      }
-    });
-  }
-
   void _onSttStatus(String status) {
     AppLogger.i('HEARING_UI', 'STT status: $status');
     if (!mounted || !_isListening) return;
 
     if (status == 'listening') {
-      _rearmWatchdogTimer?.cancel();
       if (mounted && _isListening) {
         setState(() {
           _isRearming = false;
@@ -133,8 +121,7 @@ class _HearingScreenState extends State<HearingScreen> {
           _isRearming = true;
         });
       }
-      _startRearmWatchdog();
-      Future.delayed(const Duration(milliseconds: 150), () {
+      Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted && _isListening) {
           _startContinuousListening();
         }
@@ -154,21 +141,12 @@ class _HearingScreenState extends State<HearingScreen> {
       return;
     }
 
-    await _speechService.stop();
-
     if (!mounted) return;
     setState(() {
       _isListening = true;
       _isRearming = true;
       _activePartialText = "";
     });
-
-    _startRearmWatchdog();
-    _runCaptionStreamLoop();
-  }
-
-  void _runCaptionStreamLoop() async {
-    if (!_isListening || !mounted) return;
 
     if (!TtsServiceImpl.isSpeaking) {
       await _speechService.startCaptionStream(
@@ -196,7 +174,6 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   void _stopListening() async {
-    _rearmWatchdogTimer?.cancel();
     setState(() {
       _isListening = false;
       _isRearming = false;

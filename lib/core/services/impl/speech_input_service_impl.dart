@@ -150,10 +150,12 @@ class SpeechInputServiceImpl implements SpeechInputService {
       await Future.delayed(const Duration(milliseconds: 1000));
     }
 
-    try {
-      await _speech.cancel();
-    } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 300));
+    if (_speech.isListening) {
+      try {
+        await _speech.stop();
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
 
     bool ok = await init();
     if (!ok) return;
@@ -172,8 +174,8 @@ class SpeechInputServiceImpl implements SpeechInputService {
             onPartial(text);
           }
         },
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 4),
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 5),
         partialResults: true,
         cancelOnError: false,
         listenMode: stt.ListenMode.deviceDefault,
