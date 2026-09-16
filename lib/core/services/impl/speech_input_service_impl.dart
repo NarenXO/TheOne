@@ -108,6 +108,7 @@ class SpeechInputServiceImpl implements SpeechInputService {
     required Function(String partialText) onPartial,
     required Function(String finalText, double confidence) onFinal,
   }) async {
+    _isBusy = false;
     if (TtsServiceImpl.isSpeaking) {
       await Future.delayed(const Duration(milliseconds: 1000));
     }
@@ -132,8 +133,8 @@ class SpeechInputServiceImpl implements SpeechInputService {
             onPartial(text);
           }
         },
-        listenFor: const Duration(minutes: 10),
-        pauseFor: const Duration(seconds: 5),
+        listenFor: const Duration(hours: 1),
+        pauseFor: const Duration(seconds: 30),
         partialResults: true,
         cancelOnError: false,
         listenMode: stt.ListenMode.dictation,
