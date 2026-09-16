@@ -37,4 +37,9 @@ class PreferencesService {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_keySosContact) ?? '911';
   }
+
+  static Future<void> resetOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyFirstLaunch, true);
+  }
 }

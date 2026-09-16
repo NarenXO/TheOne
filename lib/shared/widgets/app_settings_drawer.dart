@@ -129,6 +129,22 @@ class _AppSettingsDrawerState extends State<AppSettingsDrawer> {
             icon: const Icon(Icons.delete_outline),
             label: const Text("CLEAR SESSION MEMORY"),
           ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.primaryDark, side: const BorderSide(color: AppColors.primaryDark)),
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
+              await PreferencesService.resetOnboarding();
+              await _ttsService.speak("Onboarding reset. Restart the app.");
+              navigator.pop();
+              messenger.showSnackBar(
+                const SnackBar(content: Text("Onboarding reset. Restart app to show welcome again.")),
+              );
+            },
+            icon: const Icon(Icons.restart_alt),
+            label: const Text("RESET ONBOARDING (show welcome again)"),
+          ),
         ],
       ),
     );

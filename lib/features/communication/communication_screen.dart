@@ -154,12 +154,10 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
     try {
-      // 1. Stop active image stream if running to free Camera2 HAL surface
       if (_cameraController!.value.isStreamingImages) {
         await _cameraController!.stopImageStream();
       }
 
-      // 2. Pause preview briefly before taking picture to prevent surface conflict
       await _cameraController!.pausePreview();
       final file = await _cameraController!.takePicture();
       await _cameraController!.resumePreview();
@@ -167,31 +165,34 @@ class _CommunicationScreenState extends State<CommunicationScreen>
       final inputImage = InputImage.fromFilePath(file.path);
       final ocrResults = await _ocrService.extractText(inputImage);
 
+      if (ocrResults.isEmpty) {
+        setState(() => _cameraSuggestedPhrases = [
+          {"label": "No text found", "text": "I could not read any text in this photo. Please retake closer and clearer."},
+        ]);
+        await _ttsService.speak("No text detected. Please retake the photo.");
+        return;
+      }
+
+      final full = ocrResults.map((e) => e.text).join(' ');
+      final lower = full.toLowerCase();
       final suggestions = <Map<String, String>>[];
-      final fullText = ocrResults.map((e) => e.text.toLowerCase()).join(" ");
 
-      if (fullText.contains("chai") || fullText.contains("tea") || fullText.contains("coffee") || fullText.contains("menu") || fullText.contains("cafe")) {
-        suggestions.add({"label": "Order Beverage", "text": "I would like to order one hot chai, please."});
-        suggestions.add({"label": "Ask Item Price", "text": "Excuse me, how much does this cost?"});
-        suggestions.add({"label": "Ask Specialties", "text": "What do you recommend from this menu?"});
-      }
-      if (fullText.contains("room") || fullText.contains("registration") || fullText.contains("204") || fullText.contains("counter") || fullText.contains("entry")) {
-        suggestions.add({"label": "Ask Registration", "text": "Excuse me, is this the registration desk?"});
-        suggestions.add({"label": "Guide to Room 204", "text": "Could you please show me the way to Room 204?"});
-        suggestions.add({"label": "Check Notice", "text": "Could you please explain what is written on this notice?"});
-      }
+      suggestions.add({"label": "Read aloud", "text": "This is what I can read: $full"});
 
-      if (suggestions.isEmpty) {
-        suggestions.add({"label": "Inquire About Notice", "text": "Excuse me, could you please tell me what this sign says?"});
-        suggestions.add({"label": "Ask for Direction", "text": "Excuse me, I am looking for assistance regarding this board."});
-        suggestions.add({"label": "General Request", "text": "Hello! Could you please help me with this?"});
+      if (lower.contains('chai') || lower.contains('coffee') || lower.contains('tea')) {
+        suggestions.add({"label": "Order drink", "text": "I would like one medium chai, please."});
+      }
+      if (lower.contains('room') || lower.contains('registration') || lower.contains('counter') || lower.contains('desk')) {
+        suggestions.add({"label": "Inquire counter", "text": "Excuse me, is this the registration counter?"});
+      }
+      if (lower.contains('exit') || lower.contains('way') || lower.contains('gate')) {
+        suggestions.add({"label": "Ask direction", "text": "Excuse me, could you please point me towards the exit?"});
       }
 
       setState(() => _cameraSuggestedPhrases = suggestions);
       AppLogger.i('COMMUNICATION', 'Photo analyzed, generated ${suggestions.length} phrase choices');
     } catch (e) {
       AppLogger.e('COMMUNICATION', 'Photo analysis error: $e');
-      // Resume preview if paused
       try { await _cameraController?.resumePreview(); } catch (_) {}
     }
   }
@@ -200,30 +201,38 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   void _reformatIntentToSpeech() {
     final input = _intentInputController.text.trim();
     if (input.isEmpty) return;
-
     final lower = input.toLowerCase();
 
-    // Dynamic intent parsing rules
-    bool isQuestion = lower.contains("enga") || lower.contains("epdi") || lower.contains("evlo") || lower.contains("where") || lower.contains("how") || lower.contains("what") || lower.contains("kekkanum");
-    bool isFood = lower.contains("chai") || lower.contains("tea") || lower.contains("coffee") || lower.contains("thanni") || lower.contains("water") || lower.contains("sapadu") || lower.contains("food");
-    bool isLocation = lower.contains("room") || lower.contains("registration") || lower.contains("toilet") || lower.contains("restroom") || lower.contains("exit") || lower.contains("counter");
-
-    String cleanTopic = input
-        .replaceAll(RegExp(r'\b(enga|irukku|nu|kekkanum|venum|pativu|sollunga|sollo)\b', caseSensitive: false), '')
-        .trim();
-
-    if (cleanTopic.isEmpty) cleanTopic = input;
-    cleanTopic = cleanTopic[0].toUpperCase() + cleanTopic.substring(1);
-
-    String out = "";
-    if (isLocation) {
-      out = "Excuse me, could you please guide me to $cleanTopic?";
-    } else if (isFood) {
-      out = "Hello, I would like to order $cleanTopic, please.";
-    } else if (isQuestion) {
-      out = "Excuse me, could you please tell me about $cleanTopic?";
+    String out;
+    if (RegExp(r'registration|pativu|rega').hasMatch(lower)) {
+      out = 'Excuse me, could you please tell me where the registration desk is?';
+    } else if (RegExp(r'toilet|restroom|washroom|kazi').hasMatch(lower)) {
+      out = 'Excuse me, could you please guide me to the nearest restroom?';
+    } else if (RegExp(r'chai|tea|coffee|kaapi').hasMatch(lower)) {
+      out = 'I would like a medium chai, please.';
+    } else if (RegExp(r'water|thanni|tanni').hasMatch(lower)) {
+      out = 'Could I please get a bottle of water?';
+    } else if (RegExp(r'bill|evlo|price|cost').hasMatch(lower)) {
+      out = 'Could you please tell me the price and bring the bill?';
+    } else if (RegExp(r'help|udavi|emergency|sos').hasMatch(lower)) {
+      out = 'I need help immediately. Please assist me.';
+    } else if (RegExp(r'exit|veliya').hasMatch(lower)) {
+      out = 'Excuse me, could you please show me the exit?';
+    } else if (RegExp(r'room\s*\d{2,4}|\b\d{2,4}\b').hasMatch(lower)) {
+      final m = RegExp(r'\d{2,4}').firstMatch(lower);
+      out = 'Excuse me, could you please guide me to room ${m?.group(0)}?';
+    } else if (RegExp(r'thanks|thank you|nandri').hasMatch(lower)) {
+      out = 'Thank you so much for your help.';
+    } else if (RegExp(r'hello|hi\b|vanakkam').hasMatch(lower)) {
+      out = 'Hello, how are you?';
     } else {
-      out = "Excuse me, I would like to inquire about $cleanTopic.";
+      final cleaned = input
+          .replaceAll(RegExp(r'\b(enga|irukku|nu|kekkanum|venum|sollu|solunga)\b', caseSensitive: false), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      out = cleaned.isEmpty
+          ? 'Excuse me, could you please help me?'
+          : 'Excuse me, could you please help me with this: $cleaned?';
     }
 
     setState(() => _reformattedSentence = out);
@@ -441,7 +450,7 @@ class _CommunicationScreenState extends State<CommunicationScreen>
   }
 
   Widget _buildIntentTab() {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

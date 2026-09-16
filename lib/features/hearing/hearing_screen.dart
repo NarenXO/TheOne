@@ -52,7 +52,6 @@ class _HearingScreenState extends State<HearingScreen> {
   bool _isListening = false;
   bool _isAmbientDangerActive = false;
   String? _dangerAlertMessage;
-  int _emptyListenCount = 0;
 
   int _currentSpeakerIndex = 1;
   final List<Color> _speakerColors = [
@@ -96,25 +95,14 @@ class _HearingScreenState extends State<HearingScreen> {
     if (_isListening) return;
 
     setState(() => _isListening = true);
-    _emptyListenCount = 0;
 
     while (_isListening && mounted) {
-      // Use ta_IN for Tamil/English code-mixed recognition
-      final speechResult = await _speechService.listen(localeId: 'ta_IN');
-      if (speechResult.text.trim().isNotEmpty) {
-        _processSpeechInput(speechResult.text, speechResult.confidence);
-        _emptyListenCount = 0;
-      } else {
-        _emptyListenCount++;
-        if (_emptyListenCount >= 2) {
-          setState(() {
-            _isListening = false;
-            _emptyListenCount = 0;
-          });
-          await _speechService.stop();
-          return;
-        }
+      final r = await _speechService.listen(localeId: 'ta_IN');
+      if (!_isListening) break;
+      if (r.text.trim().isNotEmpty) {
+        _processSpeechInput(r.text, r.confidence);
       }
+      await Future.delayed(const Duration(milliseconds: 400));
     }
   }
 

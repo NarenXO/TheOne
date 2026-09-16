@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
 import '../../core/storage/preferences_service.dart';
@@ -57,6 +57,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _nameController.text = userName;
     } else {
       userName = _nameController.text.trim().isEmpty ? "Naren" : _nameController.text.trim();
+      await _ttsService.speak("I could not hear your name. You can type it or try again.");
     }
 
     setState(() => _statusText = "Please say Vision, Hearing, or Talk");

@@ -42,11 +42,12 @@ class _VisionScreenState extends State<VisionScreen> {
   final _objectService = ObjectDetectionServiceImpl();
   late final VisionPipeline _visionPipeline;
 
+  final _speechService = SpeechInputServiceImpl();
+
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
-  bool _isLoopListening = false;
   String _lastHeardQuery = "";
-  final String _statusLine = 'Always listening for "Hey Rook"...';
+  String _statusLine = 'Tap button to ask Rook or scan...';
 
   @override
   void initState() {
@@ -56,7 +57,88 @@ class _VisionScreenState extends State<VisionScreen> {
       objectService: _objectService,
     );
     _initCamera();
-    _startContinuousListeningLoop();
+  }
+
+  Future<void> _handleVoiceCommandOnce() async {
+    setState(() => _statusLine = 'Listening...');
+    final r = await _speechService.listen();
+    final text = r.text.trim();
+    AppLogger.i('VISION', 'Heard: "$text"');
+    if (text.isEmpty) {
+      setState(() => _statusLine = 'No speech captured. Try again closer to mic.');
+      await _ttsService.speak('I did not hear anything. Please try again.');
+      return;
+    }
+    final lower = text.toLowerCase();
+    if (lower.contains('help') || lower.contains('sos') || lower.contains('emergency')) {
+      await _ttsService.speak('Sending emergency SOS');
+      await SosService().sendSosSms();
+      return;
+    }
+    // strip wake words if present
+    final q = text
+        .replaceAll(RegExp(r'hello rook|hey rook|hi rook|rook', caseSensitive: false), '')
+        .trim();
+    _lastHeardQuery = q.isEmpty ? 'What is in front of me?' : q;
+    setState(() => _statusLine = 'Heard: $text. Scanning...');
+    await _ttsService.speak('Scanning now');
+    await _scanLiveCamera();
+  }
+
+  Future<void> _scanLiveCamera() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      return;
+    }
+
+    try {
+      if (_cameraController!.value.isStreamingImages) {
+        await _cameraController!.stopImageStream();
+      }
+
+      await _cameraController!.pausePreview();
+      final file = await _cameraController!.takePicture();
+      await _cameraController!.resumePreview();
+
+      final bytes = await file.readAsBytes();
+      final brightness = _visionPipeline.estimateBrightnessFromBytes(bytes);
+
+      final inputImage = InputImage.fromFilePath(file.path);
+      final bundle = await _visionPipeline.processInputImage(
+        inputImage,
+        estimatedBrightness: brightness,
+      );
+
+      final query = _lastHeardQuery.isNotEmpty ? _lastHeardQuery : "What is in front of me?";
+      final rankedItems = _relevanceEngine.rank(query: query, evidence: bundle.items);
+      final result = _zeroAssumptionEngine.verify(query: query, bundle: EvidenceBundle(rankedItems));
+
+      setState(() {
+        _lastResult = result;
+        _activeEvidence = rankedItems;
+      });
+
+      for (final e in rankedItems) {
+        await _sessionStorage.saveEvidence(e);
+      }
+
+      await _ttsService.speak(result.message);
+
+      switch (result.state) {
+        case ConfidenceState.verified:
+          await _hapticService.verified();
+          break;
+        case ConfidenceState.uncertain:
+        case ConfidenceState.insufficient:
+          await _hapticService.uncertain();
+          break;
+        case ConfidenceState.conflict:
+          await _hapticService.conflict();
+          break;
+      }
+    } catch (e) {
+      AppLogger.e('CAMERA', 'Safe capture error: $e');
+      try { await _cameraController?.resumePreview(); } catch (_) {}
+    }
   }
 
   Future<void> _initCamera() async {
@@ -112,101 +194,9 @@ class _VisionScreenState extends State<VisionScreen> {
     }
   }
 
-  void _startContinuousListeningLoop() async {
-    if (_isLoopListening) return;
-    _isLoopListening = true;
-
-    final speechService = SpeechInputServiceImpl();
-
-    while (_isLoopListening && mounted) {
-      try {
-        final speechResult = await speechService.listen();
-        final text = speechResult.text.toLowerCase().trim();
-
-        if (text.contains("hello rook") || text.contains("hey rook") || text.contains("rook")) {
-          AppLogger.i('VISION', 'WAKE WORD HEARD: "$text"');
-
-          if (text.contains("help") || text.contains("sos") || text.contains("emergency")) {
-            await _ttsService.speak("Triggering emergency SOS.");
-            await SosService().sendSosSms();
-          } else {
-            _lastHeardQuery = speechResult.text;
-            await _ttsService.speak("Scanning camera.");
-            await _scanLiveCamera();
-          }
-        }
-      } catch (e) {
-        AppLogger.e('VISION', 'Listening loop error: $e');
-      }
-
-      // Smooth delay to prevent thrashing
-      await Future.delayed(const Duration(milliseconds: 1000));
-    }
-  }
-
-  Future<void> _scanLiveCamera() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return;
-    }
-
-    try {
-      // 1. Stop active image stream if running to free Camera2 HAL surface
-      if (_cameraController!.value.isStreamingImages) {
-        await _cameraController!.stopImageStream();
-      }
-
-      // 2. Pause preview briefly before taking picture to prevent surface conflict
-      await _cameraController!.pausePreview();
-      final file = await _cameraController!.takePicture();
-      await _cameraController!.resumePreview();
-
-      final bytes = await file.readAsBytes();
-      final brightness = _visionPipeline.estimateBrightnessFromBytes(bytes);
-
-      final inputImage = InputImage.fromFilePath(file.path);
-      final bundle = await _visionPipeline.processInputImage(
-        inputImage,
-        estimatedBrightness: brightness,
-      );
-
-      final query = _lastHeardQuery.isNotEmpty ? _lastHeardQuery : "What is in front of me?";
-      final rankedItems = _relevanceEngine.rank(query: query, evidence: bundle.items);
-      final result = _zeroAssumptionEngine.verify(query: query, bundle: EvidenceBundle(rankedItems));
-
-      setState(() {
-        _lastResult = result;
-        _activeEvidence = rankedItems;
-      });
-
-      for (final e in rankedItems) {
-        await _sessionStorage.saveEvidence(e);
-      }
-
-      // ALWAYS Speak answer back out loud to the blind user!
-      await _ttsService.speak(result.message);
-
-      switch (result.state) {
-        case ConfidenceState.verified:
-          await _hapticService.verified();
-          break;
-        case ConfidenceState.uncertain:
-        case ConfidenceState.insufficient:
-          await _hapticService.uncertain();
-          break;
-        case ConfidenceState.conflict:
-          await _hapticService.conflict();
-          break;
-      }
-    } catch (e) {
-      AppLogger.e('CAMERA', 'Safe capture error: $e');
-      // Resume preview if paused
-      try { await _cameraController?.resumePreview(); } catch (_) {}
-    }
-  }
-
   @override
   void dispose() {
-    _isLoopListening = false;
+    _speechService.stop();
     _cameraController?.dispose();
     _cameraController = null;
     _ocrService.dispose();
@@ -300,6 +290,20 @@ class _VisionScreenState extends State<VisionScreen> {
                     color: AppColors.textPrimary,
                   ),
                   textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  minimumSize: const Size(double.infinity, 52),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _handleVoiceCommandOnce,
+                icon: const Icon(Icons.mic, color: Colors.white, size: 28),
+                label: const Text(
+                  "HOLD TO TALK / ASK ROOK",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ),
               const SizedBox(height: 16),
