@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:async';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../speech_input_service.dart';
 import '../../utils/app_logger.dart';
@@ -13,12 +14,24 @@ class SpeechInputServiceImpl implements SpeechInputService {
   bool get isListening => _speech.isListening;
 
   Future<bool> init() async {
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      AppLogger.e('STT', 'Microphone permission not granted');
+      return false;
+    }
+
     if (!_initialized) {
       try {
         _initialized = await _speech.initialize(
           onError: (e) {
-            AppLogger.e('STT', 'Native Error: ${e.errorMsg}');
+            AppLogger.e('STT', 'Native Error: ${e.errorMsg} (${e.permanent})');
             _isBusy = false;
+            final msg = e.errorMsg.toLowerCase();
+            if (msg.contains('error_client') || msg.contains('error_audio') || msg.contains('5') || msg.contains('3')) {
+              Future.delayed(const Duration(milliseconds: 500), () {
+                _resetInstance();
+              });
+            }
           },
           onStatus: (s) {
             AppLogger.i('STT', 'Status: $s');
@@ -39,17 +52,23 @@ class SpeechInputServiceImpl implements SpeechInputService {
   Future<void> _resetInstance() async {
     try {
       if (_speech.isListening) await _speech.stop();
+      await _speech.cancel();
     } catch (_) {}
     _speech = stt.SpeechToText();
     _initialized = false;
     _isBusy = false;
-    await Future.delayed(const Duration(milliseconds: 600));
+    await Future.delayed(const Duration(milliseconds: 500));
     await init();
   }
 
   // ONE-SHOT VOICE QUERY (With Session Lock & Timeout Fallback)
   @override
   Future<SpeechResult> listen() async {
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      return SpeechResult(text: '', confidence: 0.0, languageCode: 'en_IN');
+    }
+
     // Pause if TTS is currently speaking out loud
     if (TtsServiceImpl.isSpeaking) {
       await Future.delayed(const Duration(milliseconds: 800));
@@ -61,15 +80,16 @@ class SpeechInputServiceImpl implements SpeechInputService {
     }
 
     _isBusy = true;
+
+    try {
+      await _speech.cancel();
+    } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 300));
+
     final ok = await init();
     if (!ok) {
       _isBusy = false;
       return SpeechResult(text: '', confidence: 0.0, languageCode: 'en_IN');
-    }
-
-    if (_speech.isListening) {
-      await _speech.stop();
-      await Future.delayed(const Duration(milliseconds: 400));
     }
 
     final completer = Completer<SpeechResult>();
@@ -119,19 +139,20 @@ class SpeechInputServiceImpl implements SpeechInputService {
     required Function(String finalText, double confidence) onFinal,
   }) async {
     _isBusy = false;
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) return;
+
     if (TtsServiceImpl.isSpeaking) {
       await Future.delayed(const Duration(milliseconds: 1000));
     }
 
+    try {
+      await _speech.cancel();
+    } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 300));
+
     final ok = await init();
     if (!ok) return;
-
-    try {
-      if (_speech.isListening) {
-        await _speech.stop();
-      }
-    } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 200));
 
     try {
       await _speech.listen(
@@ -145,8 +166,8 @@ class SpeechInputServiceImpl implements SpeechInputService {
             onPartial(text);
           }
         },
-        listenFor: const Duration(hours: 1),
-        pauseFor: const Duration(seconds: 30),
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 10),
         partialResults: true,
         cancelOnError: false,
         listenMode: stt.ListenMode.dictation,

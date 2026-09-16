@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:vibration/vibration.dart';
 import '../../core/evidence/evidence.dart';
 import '../../core/models/evidence_source.dart';
@@ -69,6 +70,14 @@ class _HearingScreenState extends State<HearingScreen> {
   void initState() {
     super.initState();
     _loadUserName();
+    _initPermissionsAndStartListening();
+  }
+
+  Future<void> _initPermissionsAndStartListening() async {
+    await Permission.microphone.request();
+    if (mounted) {
+      _startContinuousListening();
+    }
   }
 
   void _loadUserName() async {
@@ -94,7 +103,12 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   Future<void> _startContinuousListening() async {
-    if (_isListening) return;
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      if (mounted) setState(() => _isListening = false);
+      return;
+    }
+
     await _speechService.stop();
     await Future.delayed(const Duration(milliseconds: 200));
 
@@ -298,6 +312,45 @@ class _HearingScreenState extends State<HearingScreen> {
                 ],
               ),
             ),
+          // Active Mic Status Indicator Bar with Tap to Restart
+          GestureDetector(
+            onTap: _startContinuousListening,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              decoration: BoxDecoration(
+                color: _isListening ? Colors.green.shade50 : Colors.red.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _isListening ? Colors.green : Colors.red, width: 2),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _isListening ? Icons.mic : Icons.mic_off,
+                    color: _isListening ? Colors.green : Colors.red,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _isListening ? "🟢 Mic Active - Listening..." : "🔴 Mic Paused - Tap to Retry",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: _isListening ? Colors.green.shade900 : Colors.red.shade900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    color: _isListening ? Colors.green.shade900 : Colors.red.shade900,
+                    tooltip: "Restart Mic",
+                    onPressed: _startContinuousListening,
+                  ),
+                ],
+              ),
+            ),
+          ),
           // Control Toolbar
           Container(
             margin: const EdgeInsets.all(12),
