@@ -52,6 +52,7 @@ class _HearingScreenState extends State<HearingScreen> {
   final ScrollController _scrollController = ScrollController();
 
   bool _isListening = false;
+  bool _isRearming = false;
   bool _isAmbientDangerActive = false;
   String? _dangerAlertMessage;
   String _activePartialText = "";
@@ -105,7 +106,12 @@ class _HearingScreenState extends State<HearingScreen> {
   Future<void> _startContinuousListening() async {
     final status = await Permission.microphone.request();
     if (!status.isGranted) {
-      if (mounted) setState(() => _isListening = false);
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          _isRearming = false;
+        });
+      }
       return;
     }
 
@@ -115,6 +121,7 @@ class _HearingScreenState extends State<HearingScreen> {
     if (!mounted) return;
     setState(() {
       _isListening = true;
+      _isRearming = false;
       _activePartialText = "";
     });
 
@@ -124,28 +131,42 @@ class _HearingScreenState extends State<HearingScreen> {
   void _runCaptionStreamLoop() async {
     while (_isListening && mounted) {
       if (!TtsServiceImpl.isSpeaking) {
+        if (mounted) setState(() => _isRearming = false);
         await _speechService.startCaptionStream(
           onPartial: (partialText) {
             if (mounted && _isListening) {
-              setState(() => _activePartialText = partialText);
+              setState(() {
+                _isRearming = false;
+                _activePartialText = partialText;
+              });
               _scrollToBottom();
             }
           },
           onFinal: (finalText, confidence) {
             if (mounted && _isListening && finalText.trim().isNotEmpty) {
-              setState(() => _activePartialText = "");
+              setState(() {
+                _activePartialText = "";
+                _isRearming = true;
+              });
               _processSpeechInput(finalText, confidence);
             }
           },
         );
       }
-      await Future.delayed(const Duration(milliseconds: 300));
+      if (mounted && _isListening) {
+        setState(() => _isRearming = true);
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+    }
+    if (mounted) {
+      setState(() => _isRearming = false);
     }
   }
 
   void _stopListening() async {
     setState(() {
       _isListening = false;
+      _isRearming = false;
       _activePartialText = "";
     });
     await _speechService.stop();
@@ -320,30 +341,49 @@ class _HearingScreenState extends State<HearingScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
               decoration: BoxDecoration(
-                color: _isListening ? Colors.green.shade50 : Colors.red.shade50,
+                color: !_isListening
+                    ? Colors.red.shade50
+                    : (_isRearming ? Colors.amber.shade50 : Colors.green.shade50),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _isListening ? Colors.green : Colors.red, width: 2),
+                border: Border.all(
+                  color: !_isListening
+                      ? Colors.red
+                      : (_isRearming ? Colors.amber.shade800 : Colors.green),
+                  width: 2,
+                ),
               ),
               child: Row(
                 children: [
                   Icon(
-                    _isListening ? Icons.mic : Icons.mic_off,
-                    color: _isListening ? Colors.green : Colors.red,
+                    !_isListening
+                        ? Icons.mic_off
+                        : (_isRearming ? Icons.sync : Icons.mic),
+                    color: !_isListening
+                        ? Colors.red
+                        : (_isRearming ? Colors.amber.shade900 : Colors.green),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _isListening ? "🟢 Mic Active - Listening..." : "🔴 Mic Paused - Tap to Retry",
+                      !_isListening
+                          ? "🔴 Mic Paused — Tap to Restart"
+                          : (_isRearming
+                              ? "🟡 Mic Re-arming..."
+                              : "🟢 Mic Active — Streaming Captions..."),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
-                        color: _isListening ? Colors.green.shade900 : Colors.red.shade900,
+                        color: !_isListening
+                            ? Colors.red.shade900
+                            : (_isRearming ? Colors.amber.shade900 : Colors.green.shade900),
                       ),
                     ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.refresh),
-                    color: _isListening ? Colors.green.shade900 : Colors.red.shade900,
+                    color: !_isListening
+                        ? Colors.red.shade900
+                        : (_isRearming ? Colors.amber.shade900 : Colors.green.shade900),
                     tooltip: "Restart Mic",
                     onPressed: _startContinuousListening,
                   ),

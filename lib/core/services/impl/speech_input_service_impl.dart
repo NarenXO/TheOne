@@ -154,6 +154,8 @@ class SpeechInputServiceImpl implements SpeechInputService {
     final ok = await init();
     if (!ok) return;
 
+    _isBusy = false;
+
     try {
       await _speech.listen(
         onResult: (res) {
@@ -166,11 +168,11 @@ class SpeechInputServiceImpl implements SpeechInputService {
             onPartial(text);
           }
         },
-        listenFor: const Duration(seconds: 60),
-        pauseFor: const Duration(seconds: 10),
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 4),
         partialResults: true,
         cancelOnError: false,
-        listenMode: stt.ListenMode.dictation,
+        listenMode: stt.ListenMode.deviceDefault,
         localeId: 'en_IN',
       );
     } catch (e) {
