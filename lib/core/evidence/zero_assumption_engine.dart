@@ -1,4 +1,5 @@
 import '../models/confidence_state.dart';
+import '../models/evidence_type.dart';
 import '../utils/app_logger.dart';
 import 'evidence.dart';
 import 'evidence_bundle.dart';
@@ -21,36 +22,14 @@ class ZeroAssumptionEngine {
       return result;
     }
 
-    // Prefer OCR and speech for verification answers
-    final primary = bundle.items.where((e) {
-      return e.type.name == 'ocr' ||
-          e.type.name == 'speech' ||
-          e.type.name == 'object' ||
-          e.type.name == 'obstacle';
-    }).toList();
-
-    final working = primary.isNotEmpty ? primary : bundle.items;
-
     // Normalize values
     String norm(String s) => s.trim().toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
 
-    // If query mentions a room/number, focus only matching evidence
     final q = query.toLowerCase();
-    final roomMatch = RegExp(r'(room\s*)?(\d{2,4})').firstMatch(q);
-    List<Evidence> focused = working;
-    if (roomMatch != null) {
-      final num = roomMatch.group(2)!;
-      final roomFocused = working.where((e) {
-        final v = norm(e.value);
-        return v.contains(num) || v.contains('ROOM $num') || v.contains('ROOM$num');
-      }).toList();
-      if (roomFocused.isNotEmpty) focused = roomFocused;
-    }
 
-    // Group near-identical OCR lines carefully:
-    // Only mark CONFLICT when two HIGH-confidence sources disagree on a KEY fact (room numbers etc.)
+    // Check for room conflict between strong sources
     final roomValues = <String, List<Evidence>>{};
-    for (final e in focused) {
+    for (final e in bundle.items) {
       final m = RegExp(r'\b(\d{2,4})\b').firstMatch(norm(e.value));
       if (m != null && (norm(e.value).contains('ROOM') || q.contains('room') || q.contains(m.group(1)!))) {
         roomValues.putIfAbsent(m.group(1)!, () => []).add(e);
@@ -58,7 +37,6 @@ class ZeroAssumptionEngine {
     }
 
     if (roomValues.length > 1) {
-      // true conflict only if at least two different room numbers with conf >= 0.75
       final strongRooms = roomValues.entries.where((e) {
         return e.value.any((x) => x.confidence >= 0.75);
       }).toList();
@@ -74,73 +52,67 @@ class ZeroAssumptionEngine {
       }
     }
 
-    // Otherwise pick best evidence by confidence
-    focused.sort((a, b) => b.confidence.compareTo(a.confidence));
-    final top = focused.first;
+    // Extract Image Labels & OCR text values
+    final labels = bundle.items
+        .where((e) => e.type == EvidenceType.object || e.type == EvidenceType.obstacle)
+        .map((e) => e.value)
+        .toSet()
+        .toList();
 
-    // Boost OCR text confidence floor for recognized text
+    final ocrLines = bundle.items
+        .where((e) => e.type == EvidenceType.ocr)
+        .map((e) => e.value)
+        .toSet()
+        .toList();
+
+    // Sort evidence by confidence
+    final sorted = List<Evidence>.from(bundle.items)..sort((a, b) => b.confidence.compareTo(a.confidence));
+    final top = sorted.first;
     final conf = top.confidence;
 
-    // Helper to format specific evidence values into natural spoken statements
-    String formatEvidenceValue(String val, String typeName) {
-      final clean = val.trim();
-      final lower = clean.toLowerCase();
-
-      if (typeName == 'object' || typeName == 'obstacle') {
-        if (lower == 'door' || lower.contains('door')) {
-          return "I see a door in front of you.";
-        } else if (lower == 'chair' || lower.contains('chair')) {
-          return "I see a chair ahead.";
-        } else if (lower.startsWith('a ') || lower.startsWith('an ')) {
-          return "I see $clean ahead.";
-        } else {
-          final article = RegExp(r'^[aeiou]', caseSensitive: false).hasMatch(clean) ? 'an' : 'a';
-          return "I see $article $clean in front of you.";
-        }
-      } else if (typeName == 'ocr') {
-        if (clean.toUpperCase().startsWith('ROOM') || RegExp(r'\b\d{2,4}\b').hasMatch(clean)) {
-          return "The sign reads $clean.";
-        } else {
-          return "I read: $clean.";
-        }
-      }
-      return clean;
-    }
-
+    // Determine state
+    ConfidenceState state = ConfidenceState.insufficient;
     if (EvidenceThresholds.isStrong(conf) || conf >= 0.80) {
-      final result = VerificationResult(
-        state: ConfidenceState.verified,
-        message: "Verified. ${formatEvidenceValue(top.value, top.type.name)}",
-        supporting: focused,
-      );
-      AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
-      return result;
-    }
-    if (conf >= 0.50) {
-      final result = VerificationResult(
-        state: ConfidenceState.uncertain,
-        message: "I think ${formatEvidenceValue(top.value, top.type.name)}, but confidence is moderate. Please rescan if needed.",
-        supporting: focused,
-      );
-      AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
-      return result;
+      state = ConfidenceState.verified;
+    } else if (conf >= 0.50) {
+      state = ConfidenceState.uncertain;
     }
 
-    // If we still have readable OCR text, report it instead of dead-end weak message
-    final ocrText = focused.where((e) => e.type.name == 'ocr').map((e) => e.value).toList();
-    if (ocrText.isNotEmpty) {
-      final result = VerificationResult(
-        state: ConfidenceState.uncertain,
-        message: "I can read: ${ocrText.take(3).join(' | ')}. Please confirm.",
-        supporting: focused,
-      );
-      AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
-      return result;
+    // Construct natural description answer
+    String answer = "";
+
+    // Color/Clothing query
+    if (q.contains("color") || q.contains("colour") || q.contains("shirt") || q.contains("pant") || q.contains("dress")) {
+      if (labels.isNotEmpty) {
+        answer = "I can see ${labels.take(3).join(', ')}.";
+      }
+    }
+
+    if (answer.isEmpty && (labels.isNotEmpty || ocrLines.isNotEmpty)) {
+      answer = "In front of you, ";
+      if (labels.isNotEmpty) {
+        answer += "I can see ${labels.take(3).join(', ')}. ";
+      }
+      if (ocrLines.isNotEmpty) {
+        answer += "The sign reads: ${ocrLines.take(2).join(' ')}.";
+      }
+      answer = answer.trim();
+    }
+
+    if (answer.isEmpty) {
+      answer = "I can't verify what is in front of you. Please move closer and scan again.";
+    }
+
+    if (state == ConfidenceState.uncertain) {
+      answer = "I think $answer, but confidence is moderate. Please rescan if needed.";
+    } else if (state == ConfidenceState.verified && !answer.startsWith("Verified")) {
+      answer = "Verified. $answer";
     }
 
     final result = VerificationResult(
-      state: ConfidenceState.insufficient,
-      message: "Evidence too weak to verify. Please move closer and scan again.",
+      state: state,
+      message: answer,
+      supporting: sorted,
     );
     AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
     return result;

@@ -52,6 +52,7 @@ class _HearingScreenState extends State<HearingScreen> {
   bool _isListening = false;
   bool _isAmbientDangerActive = false;
   String? _dangerAlertMessage;
+  String _activePartialText = "";
 
   int _currentSpeakerIndex = 1;
   final List<Color> _speakerColors = [
@@ -92,21 +93,35 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   Future<void> _startContinuousListening() async {
-    setState(() => _isListening = true);
-    await _speechService.startContinuousStream((text, isFinal) {
-      if (text.trim().isNotEmpty) {
-        _processSpeechInput(text, 0.85);
-      }
-      if (isFinal && _isListening) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (_isListening && mounted) _startContinuousListening();
-        });
-      }
+    if (_isListening) return;
+    setState(() {
+      _isListening = true;
+      _activePartialText = "";
     });
+
+    await _speechService.startCaptionStream(
+      onPartial: (partialText) {
+        if (mounted && _isListening) {
+          setState(() => _activePartialText = partialText);
+          _scrollToBottom();
+        }
+      },
+      onFinal: (finalText, confidence) {
+        if (mounted && _isListening && finalText.trim().isNotEmpty) {
+          setState(() {
+            _activePartialText = "";
+          });
+          _processSpeechInput(finalText, confidence);
+        }
+      },
+    );
   }
 
   void _stopListening() async {
-    setState(() => _isListening = false);
+    setState(() {
+      _isListening = false;
+      _activePartialText = "";
+    });
     await _speechService.stop();
   }
 
@@ -356,7 +371,7 @@ class _HearingScreenState extends State<HearingScreen> {
           ),
           // Caption Feed List
           Expanded(
-            child: _captions.isEmpty
+            child: (_captions.isEmpty && _activePartialText.isEmpty)
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24.0),
@@ -374,21 +389,99 @@ class _HearingScreenState extends State<HearingScreen> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: _captions.length,
+                    itemCount: _captions.length + (_activePartialText.isNotEmpty ? 1 : 0),
                     itemBuilder: (context, index) {
-                      final item = _captions[index];
-                      final isLowConfidence = item.confidence < 0.70;
+                      if (index < _captions.length) {
+                        final item = _captions[index];
+                        final isLowConfidence = item.confidence < 0.70;
 
+                        return Container(
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isLowConfidence ? AppColors.warning : AppColors.border,
+                              width: isLowConfidence ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: item.speakerColor.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: item.speakerColor, width: 1),
+                                    ),
+                                    child: Text(
+                                      item.speakerLabel,
+                                      style: TextStyle(
+                                        color: item.speakerColor,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Icon(item.toneIcon, size: 16, color: AppColors.textSecondary),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    item.toneLabel,
+                                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    "${(item.confidence * 100).toStringAsFixed(0)}%",
+                                    style: TextStyle(
+                                      color: isLowConfidence ? AppColors.warning : AppColors.textSecondary,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                item.text,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              if (isLowConfidence)
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 4.0),
+                                  child: Text(
+                                    "⚠️ Low confidence transcription",
+                                    style: TextStyle(color: AppColors.warning, fontSize: 11, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      // Active Partial Live Streaming Card
                       return Container(
                         margin: const EdgeInsets.symmetric(vertical: 6),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isLowConfidence ? AppColors.warning : AppColors.border,
-                            width: isLowConfidence ? 2 : 1,
-                          ),
+                          border: Border.all(color: AppColors.primary, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.15),
+                              blurRadius: 6,
+                              spreadRadius: 1,
+                            ),
+                          ],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -398,54 +491,33 @@ class _HearingScreenState extends State<HearingScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: item.speakerColor.withValues(alpha: 0.15),
+                                    color: AppColors.primary.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: item.speakerColor, width: 1),
+                                    border: Border.all(color: AppColors.primary, width: 1),
                                   ),
-                                  child: Text(
-                                    item.speakerLabel,
+                                  child: const Text(
+                                    "LISTENING...",
                                     style: TextStyle(
-                                      color: item.speakerColor,
+                                      color: AppColors.primary,
                                       fontWeight: FontWeight.w800,
                                       fontSize: 12,
                                     ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                Icon(item.toneIcon, size: 16, color: AppColors.textSecondary),
-                                const SizedBox(width: 4),
-                                Text(
-                                  item.toneLabel,
-                                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  "${(item.confidence * 100).toStringAsFixed(0)}%",
-                                  style: TextStyle(
-                                    color: isLowConfidence ? AppColors.warning : AppColors.textSecondary,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14,
-                                  ),
-                                ),
+                                const Icon(Icons.mic, size: 16, color: AppColors.primary),
                               ],
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              item.text,
+                              _activePartialText,
                               style: const TextStyle(
                                 fontSize: 18,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w600,
                                 color: AppColors.textPrimary,
+                                fontStyle: FontStyle.italic,
                               ),
                             ),
-                            if (isLowConfidence)
-                              const Padding(
-                                padding: EdgeInsets.only(top: 4.0),
-                                child: Text(
-                                  "⚠️ Low confidence transcription",
-                                  style: TextStyle(color: AppColors.warning, fontSize: 11, fontWeight: FontWeight.w800),
-                                ),
-                              ),
                           ],
                         ),
                       );
