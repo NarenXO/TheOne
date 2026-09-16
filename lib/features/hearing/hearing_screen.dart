@@ -134,7 +134,7 @@ class _HearingScreenState extends State<HearingScreen> {
         });
       }
       _startRearmWatchdog();
-      Future.delayed(const Duration(milliseconds: 200), () {
+      Future.delayed(const Duration(milliseconds: 150), () {
         if (mounted && _isListening) {
           _startContinuousListening();
         }
@@ -153,6 +153,8 @@ class _HearingScreenState extends State<HearingScreen> {
       }
       return;
     }
+
+    await _speechService.stop();
 
     if (!mounted) return;
     setState(() {

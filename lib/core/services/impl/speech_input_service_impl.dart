@@ -155,42 +155,34 @@ class SpeechInputServiceImpl implements SpeechInputService {
     } catch (_) {}
     await Future.delayed(const Duration(milliseconds: 300));
 
-    final ok = await init();
+    bool ok = await init();
     if (!ok) return;
 
     _isBusy = false;
 
-    bool success = false;
-    while (!success) {
-      try {
-        success = await _speech.listen(
-          onResult: (res) {
-            final text = res.recognizedWords.trim();
-            if (text.isEmpty) return;
+    try {
+      await _speech.listen(
+        onResult: (res) {
+          final text = res.recognizedWords.trim();
+          if (text.isEmpty) return;
 
-            if (res.finalResult) {
-              onFinal(text, res.confidence > 0 ? res.confidence : 0.85);
-            } else {
-              onPartial(text);
-            }
-          },
-          listenFor: const Duration(seconds: 30),
-          pauseFor: const Duration(seconds: 4),
-          partialResults: true,
-          cancelOnError: false,
-          listenMode: stt.ListenMode.deviceDefault,
-          localeId: 'en_IN',
-        );
-      } catch (e) {
-        AppLogger.e('STT', 'Stream exception: $e');
-        await _resetInstance();
-        success = false;
-      }
-
-      if (!success) {
-        AppLogger.w('STT', 'Listen call returned false (busy/closing), retrying in 400ms...');
-        await Future.delayed(const Duration(milliseconds: 400));
-      }
+          if (res.finalResult) {
+            onFinal(text, res.confidence > 0 ? res.confidence : 0.85);
+          } else {
+            onPartial(text);
+          }
+        },
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 4),
+        partialResults: true,
+        cancelOnError: false,
+        listenMode: stt.ListenMode.deviceDefault,
+        localeId: 'en_IN',
+      );
+    } catch (e) {
+      AppLogger.e('STT', 'Stream exception: $e');
+      _isBusy = false;
+      await _resetInstance();
     }
   }
 
