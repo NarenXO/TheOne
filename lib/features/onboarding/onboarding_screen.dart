@@ -30,7 +30,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return true;
     }());
     if (_enableVoiceSequence) {
-      Future.delayed(const Duration(milliseconds: 600), _startVoiceOnboardingSequence);
+      _speakWelcome();
     }
   }
 
@@ -40,49 +40,59 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  Future<void> _startVoiceOnboardingSequence() async {
+  Future<void> _speakWelcome() async {
     if (!_enableVoiceSequence) return;
-    await Future.delayed(const Duration(milliseconds: 600));
+    await Future.delayed(const Duration(milliseconds: 800));
+    await _ttsService.speak(
+      "Welcome to TheOne. Please say your name.",
+    );
+    await Future.delayed(const Duration(milliseconds: 1500));
+    _listenName();
+  }
 
-    setState(() => _statusText = "Please say your name...");
-    await _ttsService.speak("Welcome to TheOne. Please say your name.");
-    await Future.delayed(const Duration(milliseconds: 1200));
-
+  Future<void> _listenName() async {
+    if (!mounted || !_enableVoiceSequence) return;
+    setState(() => _statusText = "Listening for your name...");
     setState(() => _isListening = true);
+
     final nameResult = await _speechService.listen();
+    if (!mounted) return;
     setState(() => _isListening = false);
 
-    String userName = nameResult.text.trim();
-    if (userName.isNotEmpty) {
+    String userName = "Naren";
+    if (nameResult.text.trim().isNotEmpty) {
+      userName = nameResult.text.trim();
       _nameController.text = userName;
-    } else {
-      userName = _nameController.text.trim().isEmpty ? "Naren" : _nameController.text.trim();
-      await _ttsService.speak("I could not hear your name. You can type it or try again.");
     }
 
     setState(() => _statusText = "Please say Vision, Hearing, or Talk");
     await _ttsService.speak(
-      "Hello $userName. Please say your assist mode: Vision, Hearing, or Talk. Or tap a button below.",
+      "Hello $userName. Please say your assist mode: Vision, Hearing, or Talk.",
     );
-    await Future.delayed(const Duration(milliseconds: 1200));
+    await Future.delayed(const Duration(milliseconds: 1500));
 
+    _listenMode(userName);
+  }
+
+  Future<void> _listenMode(String userName) async {
+    if (!mounted || !_enableVoiceSequence) return;
     setState(() => _isListening = true);
+
     final modeResult = await _speechService.listen();
+    if (!mounted) return;
     setState(() => _isListening = false);
 
     final modeText = modeResult.text.toLowerCase();
 
-    // DO NOT DEFAULT TO VISION UNLESS EXPLICITLY MATCHED OR TAPPED!
-    if (modeText.contains('vision') || modeText.contains('see') || modeText.contains('blind') || modeText.contains('eye')) {
+    if (modeText.contains('vision') || modeText.contains('see') || modeText.contains('eye')) {
       _manualSelect('vision', 'Vision Assist', userName);
-    } else if (modeText.contains('hearing') || modeText.contains('deaf') || modeText.contains('ear') || modeText.contains('listen')) {
+    } else if (modeText.contains('hearing') || modeText.contains('deaf') || modeText.contains('ear')) {
       _manualSelect('hearing', 'Hearing Assist', userName);
-    } else if (modeText.contains('talk') || modeText.contains('speak') || modeText.contains('communication') || modeText.contains('mute')) {
+    } else if (modeText.contains('talk') || modeText.contains('speak') || modeText.contains('communication')) {
       _manualSelect('communication', 'Communication Assist', userName);
     } else {
-      // Prompt again out loud if nothing matched, DO NOT OPEN VISION AUTOMATICALLY
-      setState(() => _statusText = "Please tap a mode button below or say Vision, Hearing, or Talk");
-      await _ttsService.speak("I did not catch that. Please tap one of the buttons on screen or say Vision, Hearing, or Talk.");
+      setState(() => _statusText = "Please tap Vision, Hearing, or Talk below");
+      await _ttsService.speak("Please tap one of the assist mode buttons on screen.");
     }
   }
 

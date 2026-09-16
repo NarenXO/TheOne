@@ -149,7 +149,7 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     }
   }
 
-  // Photo Assist: OCR -> 3 to 4 polite spoken sentence choices
+  // Photo Assist: OCR -> Item-by-item actionable sentence cards
   Future<void> _analyzePhotoForPhrases() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
@@ -173,20 +173,42 @@ class _CommunicationScreenState extends State<CommunicationScreen>
         return;
       }
 
-      final full = ocrResults.map((e) => e.text).join(' ');
-      final lower = full.toLowerCase();
       final suggestions = <Map<String, String>>[];
+      final seenLines = <String>{};
 
-      suggestions.add({"label": "Read aloud", "text": "This is what I can read: $full"});
+      for (final result in ocrResults) {
+        final line = result.text.trim();
+        if (line.isEmpty || seenLines.contains(line.toLowerCase())) continue;
+        seenLines.add(line.toLowerCase());
 
-      if (lower.contains('chai') || lower.contains('coffee') || lower.contains('tea')) {
-        suggestions.add({"label": "Order drink", "text": "I would like one medium chai, please."});
+        final lowerLine = line.toLowerCase();
+
+        if (RegExp(r'chai|tea|coffee|sandwich|water|food|drink|burger|pizza|dosa|idli|juice', caseSensitive: false).hasMatch(lowerLine)) {
+          suggestions.add({
+            "label": "Order $line",
+            "text": "I would like to order $line, please.",
+          });
+        } else if (RegExp(r'rs\.?\s*\d+|\$\d+|\d+\s*rupees|\bprice\b', caseSensitive: false).hasMatch(lowerLine)) {
+          suggestions.add({
+            "label": "Ask Price",
+            "text": "Excuse me, how much is $line?",
+          });
+        } else if (RegExp(r'room\s*\d*|registration|restroom|toilet|exit|counter|desk|gate|entrance', caseSensitive: false).hasMatch(lowerLine)) {
+          suggestions.add({
+            "label": "Ask Direction",
+            "text": "Could you please guide me to $line?",
+          });
+        } else {
+          suggestions.add({
+            "label": "Say '$line'",
+            "text": "I am inquiring about $line.",
+          });
+        }
       }
-      if (lower.contains('room') || lower.contains('registration') || lower.contains('counter') || lower.contains('desk')) {
-        suggestions.add({"label": "Inquire counter", "text": "Excuse me, is this the registration counter?"});
-      }
-      if (lower.contains('exit') || lower.contains('way') || lower.contains('gate')) {
-        suggestions.add({"label": "Ask direction", "text": "Excuse me, could you please point me towards the exit?"});
+
+      if (suggestions.isEmpty) {
+        final full = ocrResults.map((e) => e.text).join(' ');
+        suggestions.add({"label": "Read aloud", "text": "This is what I can read: $full"});
       }
 
       setState(() => _cameraSuggestedPhrases = suggestions);
@@ -197,42 +219,45 @@ class _CommunicationScreenState extends State<CommunicationScreen>
     }
   }
 
-  // Rich NLU Intent Transformer
+  // Rich NLU Intent Transformer Overhaul
   void _reformatIntentToSpeech() {
     final input = _intentInputController.text.trim();
     if (input.isEmpty) return;
     final lower = input.toLowerCase();
 
+    // Clean out stop words
+    String topic = input
+        .replaceAll(RegExp(r'\b(enga|irukku|nu|kekkanum|venum|pativu|sollu|solunga|pessunga)\b', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (topic.isEmpty) topic = input;
+
     String out;
-    if (RegExp(r'registration|pativu|rega').hasMatch(lower)) {
-      out = 'Excuse me, could you please tell me where the registration desk is?';
-    } else if (RegExp(r'toilet|restroom|washroom|kazi').hasMatch(lower)) {
-      out = 'Excuse me, could you please guide me to the nearest restroom?';
-    } else if (RegExp(r'chai|tea|coffee|kaapi').hasMatch(lower)) {
-      out = 'I would like a medium chai, please.';
-    } else if (RegExp(r'water|thanni|tanni').hasMatch(lower)) {
-      out = 'Could I please get a bottle of water?';
-    } else if (RegExp(r'bill|evlo|price|cost').hasMatch(lower)) {
-      out = 'Could you please tell me the price and bring the bill?';
-    } else if (RegExp(r'help|udavi|emergency|sos').hasMatch(lower)) {
-      out = 'I need help immediately. Please assist me.';
-    } else if (RegExp(r'exit|veliya').hasMatch(lower)) {
-      out = 'Excuse me, could you please show me the exit?';
-    } else if (RegExp(r'room\s*\d{2,4}|\b\d{2,4}\b').hasMatch(lower)) {
-      final m = RegExp(r'\d{2,4}').firstMatch(lower);
-      out = 'Excuse me, could you please guide me to room ${m?.group(0)}?';
-    } else if (RegExp(r'thanks|thank you|nandri').hasMatch(lower)) {
-      out = 'Thank you so much for your help.';
-    } else if (RegExp(r'hello|hi\b|vanakkam').hasMatch(lower)) {
-      out = 'Hello, how are you?';
+
+    if (RegExp(r"don't be sad|feel.*sad|kavalai|crying|upset").hasMatch(lower)) {
+      out = "Please don't be sad, everything will be alright.";
+    } else if (RegExp(r"happy|greetings|good night|good morning|vanakkam|hi\b|hello").hasMatch(lower)) {
+      if (lower.contains("night")) {
+        out = "Good night! Have a peaceful rest.";
+      } else if (lower.contains("morning")) {
+        out = "Good morning! Wishing you a pleasant day.";
+      } else {
+        out = "Hello! I am happy to connect with you.";
+      }
+    } else if (RegExp(r'registration|pativu|rega|room|toilet|restroom|washroom|kazi|exit|veliya|counter|desk|where|enga').hasMatch(lower)) {
+      out = topic.isEmpty
+          ? 'Excuse me, could you please tell me where to go?'
+          : 'Excuse me, could you please tell me where $topic is?';
+    } else if (RegExp(r'chai|tea|coffee|kaapi|water|thanni|tanni|food|sapadu|drink|venum').hasMatch(lower)) {
+      out = topic.isEmpty
+          ? 'I would like to request assistance, please.'
+          : 'I would like to request $topic, please.';
+    } else if (RegExp(r'how|why|what|when|who|epdi|evlo|price|cost|bill|\?').hasMatch(lower)) {
+      out = topic.isEmpty
+          ? 'Excuse me, may I ask a question?'
+          : 'Excuse me, may I ask about $topic?';
     } else {
-      final cleaned = input
-          .replaceAll(RegExp(r'\b(enga|irukku|nu|kekkanum|venum|sollu|solunga)\b', caseSensitive: false), ' ')
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .trim();
-      out = cleaned.isEmpty
-          ? 'Excuse me, could you please help me?'
-          : 'Excuse me, could you please help me with this: $cleaned?';
+      out = 'Excuse me, could you please help me with this: $topic?';
     }
 
     setState(() => _reformattedSentence = out);

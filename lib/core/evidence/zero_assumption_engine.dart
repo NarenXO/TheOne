@@ -81,10 +81,36 @@ class ZeroAssumptionEngine {
     // Boost OCR text confidence floor for recognized text
     final conf = top.confidence;
 
+    // Helper to format specific evidence values into natural spoken statements
+    String formatEvidenceValue(String val, String typeName) {
+      final clean = val.trim();
+      final lower = clean.toLowerCase();
+
+      if (typeName == 'object' || typeName == 'obstacle') {
+        if (lower == 'door' || lower.contains('door')) {
+          return "I see a door in front of you.";
+        } else if (lower == 'chair' || lower.contains('chair')) {
+          return "I see a chair ahead.";
+        } else if (lower.startsWith('a ') || lower.startsWith('an ')) {
+          return "I see $clean ahead.";
+        } else {
+          final article = RegExp(r'^[aeiou]', caseSensitive: false).hasMatch(clean) ? 'an' : 'a';
+          return "I see $article $clean in front of you.";
+        }
+      } else if (typeName == 'ocr') {
+        if (clean.toUpperCase().startsWith('ROOM') || RegExp(r'\b\d{2,4}\b').hasMatch(clean)) {
+          return "The sign reads $clean.";
+        } else {
+          return "I read: $clean.";
+        }
+      }
+      return clean;
+    }
+
     if (EvidenceThresholds.isStrong(conf) || conf >= 0.80) {
       final result = VerificationResult(
         state: ConfidenceState.verified,
-        message: "Verified. ${top.value}",
+        message: "Verified. ${formatEvidenceValue(top.value, top.type.name)}",
         supporting: focused,
       );
       AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
@@ -93,7 +119,7 @@ class ZeroAssumptionEngine {
     if (conf >= 0.50) {
       final result = VerificationResult(
         state: ConfidenceState.uncertain,
-        message: "I think I see ${top.value}, but confidence is moderate. Please rescan if needed.",
+        message: "I think ${formatEvidenceValue(top.value, top.type.name)}, but confidence is moderate. Please rescan if needed.",
         supporting: focused,
       );
       AppLogger.i('ENGINE', 'Result state: ${result.state.name.toUpperCase()} -> "${result.message}"');
