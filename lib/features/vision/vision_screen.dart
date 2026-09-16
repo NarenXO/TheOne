@@ -4,12 +4,11 @@ import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/evidence/evidence.dart';
-import '../../core/evidence/evidence_bundle.dart';
-import '../../core/evidence/relevance_engine.dart';
 import '../../core/evidence/zero_assumption_engine.dart';
 import '../../core/evidence/verification_result.dart';
 import '../../core/models/confidence_state.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
+import '../../core/services/impl/image_labeling_service.dart';
 import '../../core/services/impl/object_detection_service_impl.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
@@ -37,9 +36,9 @@ class _VisionScreenState extends State<VisionScreen> {
   final _ttsService = TtsServiceImpl();
   final _hapticService = HapticServiceImpl();
   final _zeroAssumptionEngine = ZeroAssumptionEngine();
-  final _relevanceEngine = RelevanceEngine();
   final _sessionStorage = SessionStorage();
   final _objectService = ObjectDetectionServiceImpl();
+  final _labelService = ImageLabelingService();
   late final VisionPipeline _visionPipeline;
 
   final _speechService = SpeechInputServiceImpl();
@@ -47,7 +46,8 @@ class _VisionScreenState extends State<VisionScreen> {
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
   String _lastHeardQuery = "";
-  String _statusLine = 'Tap button to ask Rook or scan...';
+  String _statusLine = 'Always listening for "Hey Rook"...';
+  bool _isWakeWordLooping = false;
 
   @override
   void initState() {
@@ -55,152 +55,114 @@ class _VisionScreenState extends State<VisionScreen> {
     _visionPipeline = VisionPipeline(
       ocrService: _ocrService,
       objectService: _objectService,
+      labelService: _labelService,
     );
     _initCamera();
+    _startWakeWordLoop();
   }
 
-  Future<void> _handleVoiceCommandOnce() async {
-    setState(() => _statusLine = 'Listening...');
-    final r = await _speechService.listen();
-    final text = r.text.trim();
-    AppLogger.i('VISION', 'Heard: "$text"');
-    if (text.isEmpty) {
-      setState(() => _statusLine = 'No speech captured. Try again closer to mic.');
-      await _ttsService.speak('I did not hear anything. Please try again.');
-      return;
-    }
-    final lower = text.toLowerCase();
-    if (lower.contains('help') || lower.contains('sos') || lower.contains('emergency')) {
-      await _ttsService.speak('Sending emergency SOS');
-      await SosService().sendSosSms();
-      return;
-    }
-    // strip wake words if present
-    final q = text
-        .replaceAll(RegExp(r'hello rook|hey rook|hi rook|rook', caseSensitive: false), '')
-        .trim();
-    _lastHeardQuery = q.isEmpty ? 'What is in front of me?' : q;
-    setState(() => _statusLine = 'Heard: $text. Scanning...');
-    await _ttsService.speak('Scanning now');
-    await _scanLiveCamera();
-  }
+  void _startWakeWordLoop() async {
+    _isWakeWordLooping = true;
+    while (_isWakeWordLooping && mounted) {
+      if (!_speechService.isListening) {
+        await _speechService.startContinuousStream((text, isFinal) async {
+          final lower = text.toLowerCase();
+          if (lower.contains("hello rook") || lower.contains("hey rook") || lower.contains("rook")) {
+            await _speechService.stop();
+            if (mounted) setState(() => _statusLine = "Wake word detected! Scanning...");
+            _lastHeardQuery = text;
 
-  Future<void> _scanLiveCamera() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return;
-    }
-
-    try {
-      if (_cameraController!.value.isStreamingImages) {
-        await _cameraController!.stopImageStream();
+            if (lower.contains("help") || lower.contains("emergency") || lower.contains("sos")) {
+              await _ttsService.speak("Triggering emergency SOS.");
+              await SosService().sendSosSms();
+            } else {
+              await _ttsService.speak("Scanning");
+              await _scanLiveCamera();
+            }
+          }
+        });
       }
-
-      await _cameraController!.pausePreview();
-      final file = await _cameraController!.takePicture();
-      await _cameraController!.resumePreview();
-
-      final bytes = await file.readAsBytes();
-      final brightness = _visionPipeline.estimateBrightnessFromBytes(bytes);
-
-      final inputImage = InputImage.fromFilePath(file.path);
-      final bundle = await _visionPipeline.processInputImage(
-        inputImage,
-        estimatedBrightness: brightness,
-      );
-
-      final query = _lastHeardQuery.isNotEmpty ? _lastHeardQuery : "What is in front of me?";
-      final rankedItems = _relevanceEngine.rank(query: query, evidence: bundle.items);
-      final result = _zeroAssumptionEngine.verify(query: query, bundle: EvidenceBundle(rankedItems));
-
-      setState(() {
-        _lastResult = result;
-        _activeEvidence = rankedItems;
-      });
-
-      for (final e in rankedItems) {
-        await _sessionStorage.saveEvidence(e);
-      }
-
-      await _ttsService.speak(result.message);
-
-      switch (result.state) {
-        case ConfidenceState.verified:
-          await _hapticService.verified();
-          break;
-        case ConfidenceState.uncertain:
-        case ConfidenceState.insufficient:
-          await _hapticService.uncertain();
-          break;
-        case ConfidenceState.conflict:
-          await _hapticService.conflict();
-          break;
-      }
-    } catch (e) {
-      AppLogger.e('CAMERA', 'Safe capture error: $e');
-      try { await _cameraController?.resumePreview(); } catch (_) {}
+      await Future.delayed(const Duration(seconds: 3));
     }
   }
 
   Future<void> _initCamera() async {
-    if (!mounted) return;
-    await Permission.camera.request();
-    await Permission.microphone.request();
+    final status = await Permission.camera.request();
+    if (!status.isGranted) return;
+    final cameras = await availableCameras();
+    if (cameras.isEmpty) return;
+    _cameraController = CameraController(
+      cameras.first,
+      ResolutionPreset.medium,
+      enableAudio: false,
+    );
+    await _cameraController!.initialize();
+    if (mounted) setState(() => _isCameraInitialized = true);
+  }
 
+  Future<void> _scanLiveCamera() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
     try {
-      if (_cameraController != null) {
-        await _cameraController!.dispose();
-        _cameraController = null;
+      final image = await _cameraController!.takePicture();
+      final inputImage = InputImage.fromFilePath(image.path);
+      final bundle = await _visionPipeline.processInputImage(inputImage);
+      if (!mounted) return;
+
+      final evidence = bundle.items;
+      setState(() {
+        _activeEvidence = evidence;
+      });
+
+      final labelNames = evidence.map((e) => e.value).where((c) => c.isNotEmpty).toList();
+      String speechText = "I could not detect any distinct objects.";
+      if (labelNames.isNotEmpty) {
+        if (labelNames.length == 1) {
+          speechText = "I see ${labelNames.first} in front of you.";
+        } else if (labelNames.length == 2) {
+          speechText = "I see ${labelNames[0]} and ${labelNames[1]} in front of you.";
+        } else {
+          final joined = labelNames.sublist(0, labelNames.length - 1).join(", ");
+          speechText = "I see $joined, and ${labelNames.last} in front of you.";
+        }
       }
 
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
-        if (mounted) setState(() => _isCameraInitialized = false);
-        return;
-      }
-
-      final backCam = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.back,
-        orElse: () => cameras.first,
+      final verResult = _zeroAssumptionEngine.verify(
+        query: _lastHeardQuery.isEmpty ? "What is in front of me?" : _lastHeardQuery,
+        bundle: bundle,
       );
-
-      // Try medium resolution first to avoid surface combination limit on Android
-      _cameraController = CameraController(
-        backCam,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
-      );
-
-      try {
-        await _cameraController!.initialize();
-      } catch (_) {
-        // Fallback to low resolution
-        _cameraController = CameraController(
-          backCam,
-          ResolutionPreset.low,
-          enableAudio: false,
-          imageFormatGroup: ImageFormatGroup.jpeg,
-        );
-        await _cameraController!.initialize();
-      }
-
       if (mounted) {
-        setState(() => _isCameraInitialized = true);
-        AppLogger.i('CAMERA', 'Camera initialized successfully (ResolutionPreset.medium)');
+        setState(() {
+          _lastResult = verResult;
+          _statusLine = speechText;
+        });
       }
+      await _ttsService.speak(speechText);
+      await _hapticService.verified();
     } catch (e) {
-      AppLogger.e('CAMERA', 'Camera init exception: $e');
-      if (mounted) setState(() => _isCameraInitialized = false);
+      AppLogger.e('VISION', 'Error scanning live camera: $e');
+    }
+  }
+
+  Future<void> _handleVoiceCommandOnce() async {
+    setState(() => _statusLine = "Listening...");
+    final result = await _speechService.listen();
+    if (result.text.isNotEmpty) {
+      _lastHeardQuery = result.text;
+      await _scanLiveCamera();
+    } else {
+      setState(() => _statusLine = "No speech detected.");
     }
   }
 
   @override
   void dispose() {
+    _isWakeWordLooping = false;
     _speechService.stop();
     _cameraController?.dispose();
     _cameraController = null;
     _ocrService.dispose();
     _objectService.dispose();
+    _labelService.dispose();
     super.dispose();
   }
 

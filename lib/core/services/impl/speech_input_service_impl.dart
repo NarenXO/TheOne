@@ -2,97 +2,65 @@
 import 'dart:async';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../speech_input_service.dart';
-import '../../utils/app_logger.dart';
 
 class SpeechInputServiceImpl implements SpeechInputService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _initialized = false;
-  bool _available = false;
 
-  Future<bool> _ensureInit() async {
-    if (_initialized) return _available;
-    _available = await _speech.initialize(
-      onError: (e) => AppLogger.e('STT', 'Error: $e'),
-      onStatus: (s) => AppLogger.i('STT', 'Status: $s'),
-    );
-    _initialized = true;
-    AppLogger.i('STT', 'Initialized available=$_available');
-    return _available;
+  bool get isListening => _speech.isListening;
+
+  Future<bool> init() async {
+    if (!_initialized) {
+      _initialized = await _speech.initialize();
+    }
+    return _initialized;
   }
 
+  // One-shot for specific prompts
   @override
-  Future<SpeechResult> listen({
-    Duration listenFor = const Duration(seconds: 8),
-    Duration pauseFor = const Duration(seconds: 3),
-    String localeId = 'en_IN',
-  }) async {
-    final ok = await _ensureInit();
-    if (!ok) {
-      AppLogger.e('STT', 'Speech recognition unavailable on device');
-      return SpeechResult(text: '', confidence: 0.0, languageCode: localeId);
-    }
-
-    if (_speech.isListening) {
-      await _speech.stop();
-      await Future.delayed(const Duration(milliseconds: 250));
-    }
+  Future<SpeechResult> listen() async {
+    final ok = await init();
+    if (!ok) return SpeechResult(text: '', confidence: 0.0, languageCode: 'en_IN');
 
     final completer = Completer<SpeechResult>();
     String latest = '';
-    double conf = 0.0;
+    
+    await _speech.listen(
+      onResult: (res) {
+        latest = res.recognizedWords;
+        if (res.finalResult && !completer.isCompleted) {
+          completer.complete(SpeechResult(text: latest, confidence: 0.9, languageCode: 'en_IN'));
+        }
+      },
+      listenFor: const Duration(seconds: 10),
+      pauseFor: const Duration(seconds: 3),
+      localeId: 'en_IN',
+    );
 
-    AppLogger.i('STT', 'Listening start locale=$localeId');
+    return completer.future.timeout(
+      const Duration(seconds: 12),
+      onTimeout: () => SpeechResult(text: latest, confidence: 0.8, languageCode: 'en_IN'),
+    ).whenComplete(() => _speech.stop());
+  }
+
+  // True continuous streaming for Wake Word & Captions
+  Future<void> startContinuousStream(Function(String text, bool isFinal) onResult) async {
+    final ok = await init();
+    if (!ok) return;
+
+    if (_speech.isListening) await _speech.stop();
 
     await _speech.listen(
-      onResult: (result) {
-        latest = result.recognizedWords.trim();
-        if (result.hasConfidenceRating && result.confidence > 0) {
-          conf = result.confidence;
-        } else if (latest.isNotEmpty) {
-          conf = 0.88;
-        }
-        AppLogger.i('STT', 'Partial/final="$latest" final=${result.finalResult} conf=$conf');
-        if (result.finalResult && !completer.isCompleted) {
-          completer.complete(SpeechResult(
-            text: latest,
-            confidence: conf > 0 ? conf : 0.85,
-            languageCode: localeId,
-          ));
-        }
-      },
-      listenFor: listenFor,
-      pauseFor: pauseFor,
+      onResult: (res) => onResult(res.recognizedWords, res.finalResult),
       partialResults: true,
-      cancelOnError: true,
-      listenMode: stt.ListenMode.confirmation,
-      localeId: localeId,
+      cancelOnError: false,
+      listenMode: stt.ListenMode.dictation,
+      localeId: 'ta_IN', // Supports Tamil and English mixed
     );
-
-    // Timeout fallback if finalResult never fires
-    final result = await completer.future.timeout(
-      listenFor + const Duration(seconds: 2),
-      onTimeout: () {
-        AppLogger.w('STT', 'Timeout. latest="$latest"');
-        return SpeechResult(
-          text: latest,
-          confidence: latest.isEmpty ? 0.0 : (conf > 0 ? conf : 0.8),
-          languageCode: localeId,
-        );
-      },
-    );
-
-    try {
-      await _speech.stop();
-    } catch (_) {}
-
-    AppLogger.i('STT', 'Final captured: "${result.text}" conf=${result.confidence}');
-    return result;
   }
 
   @override
   Future<void> stop() async {
-    try {
-      if (_speech.isListening) await _speech.stop();
-    } catch (_) {}
+    if (_speech.isListening) await _speech.stop();
   }
 }

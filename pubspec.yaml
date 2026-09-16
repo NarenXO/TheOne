@@ -1,4 +1,4 @@
-﻿name: theone
+name: theone
 description: Offline Evidence-First Multimodal Accessibility Assistant
 publish_to: 'none'
 version: 0.1.0+1
@@ -21,6 +21,7 @@ dependencies:
   google_mlkit_commons: ^0.8.1
   google_mlkit_text_recognition: ^0.13.1
   google_mlkit_object_detection: ^0.13.1
+  google_mlkit_image_labeling: ^0.12.1
   vibration: ^3.2.1
   speech_to_text: ^7.5.0
   torch_light: ^1.1.0

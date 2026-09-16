@@ -92,18 +92,17 @@ class _HearingScreenState extends State<HearingScreen> {
   }
 
   Future<void> _startContinuousListening() async {
-    if (_isListening) return;
-
     setState(() => _isListening = true);
-
-    while (_isListening && mounted) {
-      final r = await _speechService.listen(localeId: 'ta_IN');
-      if (!_isListening) break;
-      if (r.text.trim().isNotEmpty) {
-        _processSpeechInput(r.text, r.confidence);
+    await _speechService.startContinuousStream((text, isFinal) {
+      if (text.trim().isNotEmpty) {
+        _processSpeechInput(text, 0.85);
       }
-      await Future.delayed(const Duration(milliseconds: 400));
-    }
+      if (isFinal && _isListening) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (_isListening && mounted) _startContinuousListening();
+        });
+      }
+    });
   }
 
   void _stopListening() async {

@@ -165,50 +165,37 @@ class _CommunicationScreenState extends State<CommunicationScreen>
       final inputImage = InputImage.fromFilePath(file.path);
       final ocrResults = await _ocrService.extractText(inputImage);
 
-      if (ocrResults.isEmpty) {
-        setState(() => _cameraSuggestedPhrases = [
-          {"label": "No text found", "text": "I could not read any text in this photo. Please retake closer and clearer."},
-        ]);
-        await _ttsService.speak("No text detected. Please retake the photo.");
-        return;
-      }
-
+      final fullText = ocrResults.map((e) => e.text).join(" ").toLowerCase();
       final suggestions = <Map<String, String>>[];
-      final seenLines = <String>{};
 
-      for (final result in ocrResults) {
-        final line = result.text.trim();
-        if (line.isEmpty || seenLines.contains(line.toLowerCase())) continue;
-        seenLines.add(line.toLowerCase());
-
-        final lowerLine = line.toLowerCase();
-
-        if (RegExp(r'chai|tea|coffee|sandwich|water|food|drink|burger|pizza|dosa|idli|juice', caseSensitive: false).hasMatch(lowerLine)) {
-          suggestions.add({
-            "label": "Order $line",
-            "text": "I would like to order $line, please.",
-          });
-        } else if (RegExp(r'rs\.?\s*\d+|\$\d+|\d+\s*rupees|\bprice\b', caseSensitive: false).hasMatch(lowerLine)) {
-          suggestions.add({
-            "label": "Ask Price",
-            "text": "Excuse me, how much is $line?",
-          });
-        } else if (RegExp(r'room\s*\d*|registration|restroom|toilet|exit|counter|desk|gate|entrance', caseSensitive: false).hasMatch(lowerLine)) {
-          suggestions.add({
-            "label": "Ask Direction",
-            "text": "Could you please guide me to $line?",
-          });
+      if (fullText.isEmpty) {
+        suggestions.add({"label": "No Text", "text": "I couldn't read any text clearly."});
+        await _ttsService.speak("No text detected. Please retake the photo.");
+      } else {
+        if (fullText.contains("menu") || fullText.contains("rs") || fullText.contains("₹") || fullText.contains("coffee") || fullText.contains("hotel")) {
+          suggestions.add({"label": "Order Item", "text": "Hello, I would like to place an order from this menu."});
+          suggestions.add({"label": "Ask Price", "text": "Excuse me, how much does this item cost?"});
+        } else if (fullText.contains("hospital") || fullText.contains("dr.") || fullText.contains("clinic")) {
+          suggestions.add({"label": "Doctor Appointment", "text": "Hello, I am here to see the doctor."});
         } else {
-          suggestions.add({
-            "label": "Say '$line'",
-            "text": "I am inquiring about $line.",
-          });
+          suggestions.add({"label": "Read Sign", "text": "Excuse me, could you please tell me what this sign board means?"});
         }
-      }
 
-      if (suggestions.isEmpty) {
-        final full = ocrResults.map((e) => e.text).join(' ');
-        suggestions.add({"label": "Read aloud", "text": "This is what I can read: $full"});
+        final seenLines = <String>{};
+        for (final result in ocrResults) {
+          final line = result.text.trim();
+          if (line.isEmpty || seenLines.contains(line.toLowerCase())) continue;
+          seenLines.add(line.toLowerCase());
+          final lowerLine = line.toLowerCase();
+          if (RegExp(r'chai|tea|coffee|sandwich|water|food|drink|burger|pizza|dosa|idli|juice', caseSensitive: false).hasMatch(lowerLine)) {
+            suggestions.add({
+              "label": "Order $line",
+              "text": "I would like to order $line, please.",
+            });
+          }
+        }
+
+        suggestions.add({"label": "Read Raw Text", "text": "The text reads: ${fullText.substring(0, fullText.length > 50 ? 50 : fullText.length)}"});
       }
 
       setState(() => _cameraSuggestedPhrases = suggestions);

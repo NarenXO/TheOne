@@ -30,7 +30,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return true;
     }());
     if (_enableVoiceSequence) {
-      _speakWelcome();
+      Future.delayed(const Duration(milliseconds: 600), _startVoiceOnboardingSequence);
     }
   }
 
@@ -40,59 +40,42 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  Future<void> _speakWelcome() async {
+  Future<void> _startVoiceOnboardingSequence() async {
     if (!_enableVoiceSequence) return;
-    await Future.delayed(const Duration(milliseconds: 800));
-    await _ttsService.speak(
-      "Welcome to TheOne. Please say your name.",
-    );
-    await Future.delayed(const Duration(milliseconds: 1500));
-    _listenName();
-  }
+    // Wait for Android TTS engine to physically warm up
+    await Future.delayed(const Duration(seconds: 2));
 
-  Future<void> _listenName() async {
-    if (!mounted || !_enableVoiceSequence) return;
     setState(() => _statusText = "Listening for your name...");
-    setState(() => _isListening = true);
+    await _ttsService.speak("Welcome to TheOne. Please say your name.");
 
+    // Activate mic immediately after speech completes
+    setState(() => _isListening = true);
     final nameResult = await _speechService.listen();
     if (!mounted) return;
     setState(() => _isListening = false);
 
-    String userName = "Naren";
-    if (nameResult.text.trim().isNotEmpty) {
-      userName = nameResult.text.trim();
-      _nameController.text = userName;
-    }
+    String userName = nameResult.text.trim();
+    if (userName.isNotEmpty) _nameController.text = userName;
+    userName = _nameController.text.isEmpty ? "Naren" : _nameController.text;
 
-    setState(() => _statusText = "Please say Vision, Hearing, or Talk");
-    await _ttsService.speak(
-      "Hello $userName. Please say your assist mode: Vision, Hearing, or Talk.",
-    );
-    await Future.delayed(const Duration(milliseconds: 1500));
+    setState(() => _statusText = "Say Vision, Hearing, or Talk");
+    await _ttsService.speak("Hello $userName. Please say your assist mode: Vision, Hearing, or Talk.");
 
-    _listenMode(userName);
-  }
-
-  Future<void> _listenMode(String userName) async {
-    if (!mounted || !_enableVoiceSequence) return;
+    if (!mounted) return;
     setState(() => _isListening = true);
-
     final modeResult = await _speechService.listen();
     if (!mounted) return;
     setState(() => _isListening = false);
 
     final modeText = modeResult.text.toLowerCase();
-
-    if (modeText.contains('vision') || modeText.contains('see') || modeText.contains('eye')) {
+    if (modeText.contains('vision') || modeText.contains('see')) {
       _manualSelect('vision', 'Vision Assist', userName);
-    } else if (modeText.contains('hearing') || modeText.contains('deaf') || modeText.contains('ear')) {
+    } else if (modeText.contains('hearing') || modeText.contains('deaf')) {
       _manualSelect('hearing', 'Hearing Assist', userName);
-    } else if (modeText.contains('talk') || modeText.contains('speak') || modeText.contains('communication')) {
+    } else if (modeText.contains('talk') || modeText.contains('speech') || modeText.contains('mute')) {
       _manualSelect('communication', 'Communication Assist', userName);
     } else {
-      setState(() => _statusText = "Please tap Vision, Hearing, or Talk below");
-      await _ttsService.speak("Please tap one of the assist mode buttons on screen.");
+      await _ttsService.speak("I didn't catch that. Please tap an option on the screen.");
     }
   }
 
