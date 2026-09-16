@@ -1,19 +1,22 @@
+import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:permission_handler/permission_handler.dart';
+
 import '../../core/evidence/evidence.dart';
+import '../../core/evidence/evidence_bundle.dart';
+import '../../core/evidence/relevance_engine.dart';
 import '../../core/evidence/zero_assumption_engine.dart';
 import '../../core/evidence/verification_result.dart';
 import '../../core/models/confidence_state.dart';
+import '../../core/safety/sos_service.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/image_labeling_service.dart';
-import '../../core/services/impl/object_detection_service_impl.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
+import '../../core/services/impl/object_detection_service_impl.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
-import '../../core/safety/sos_service.dart';
 import '../../core/storage/session_storage.dart';
 import '../../core/utils/app_logger.dart';
 import '../../shared/theme/app_theme.dart';
@@ -33,20 +36,22 @@ class _VisionScreenState extends State<VisionScreen> {
   bool _isCameraInitialized = false;
 
   final _ocrService = OcrServiceImpl();
-  final _ttsService = TtsServiceImpl();
-  final _hapticService = HapticServiceImpl();
-  final _zeroAssumptionEngine = ZeroAssumptionEngine();
-  final _sessionStorage = SessionStorage();
   final _objectService = ObjectDetectionServiceImpl();
   final _labelService = ImageLabelingService();
-  late final VisionPipeline _visionPipeline;
-
+  final _ttsService = TtsServiceImpl();
+  final _hapticService = HapticServiceImpl();
   final _speechService = SpeechInputServiceImpl();
+  final _sosService = SosService();
+  final _zeroAssumptionEngine = ZeroAssumptionEngine();
+  final _relevanceEngine = RelevanceEngine();
+  final _sessionStorage = SessionStorage();
+
+  late final VisionPipeline _visionPipeline;
 
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
-  String _lastHeardQuery = "";
-  String _statusLine = 'Always listening for "Hey Rook"...';
+  String _statusLine = "Listening for 'Hey Rook' or 'Hello Rook'...";
+  bool _isScanning = false;
   bool _isWakeWordLooping = false;
 
   @override
@@ -57,27 +62,57 @@ class _VisionScreenState extends State<VisionScreen> {
       objectService: _objectService,
       labelService: _labelService,
     );
-    _initCamera();
+    _initCameraAndWakeWord();
+  }
+
+  Future<void> _initCameraAndWakeWord() async {
+    await Permission.camera.request();
+    await Permission.microphone.request();
+
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isNotEmpty) {
+        final backCam = cameras.firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.back,
+          orElse: () => cameras.first,
+        );
+
+        _cameraController = CameraController(
+          backCam,
+          ResolutionPreset.medium,
+          enableAudio: false,
+          imageFormatGroup: ImageFormatGroup.jpeg,
+        );
+
+        await _cameraController!.initialize();
+        if (mounted) setState(() => _isCameraInitialized = true);
+      }
+    } catch (e) {
+      AppLogger.e('VISION', 'Camera init error: $e');
+    }
+
     _startWakeWordLoop();
   }
 
   void _startWakeWordLoop() async {
+    if (_isWakeWordLooping) return;
     _isWakeWordLooping = true;
-    while (_isWakeWordLooping && mounted) {
-      if (!_speechService.isListening) {
-        await _speechService.startContinuousStream((text, isFinal) async {
-          final lower = text.toLowerCase();
-          if (lower.contains("hello rook") || lower.contains("hey rook") || lower.contains("rook")) {
-            await _speechService.stop();
-            if (mounted) setState(() => _statusLine = "Wake word detected! Scanning...");
-            _lastHeardQuery = text;
 
-            if (lower.contains("help") || lower.contains("emergency") || lower.contains("sos")) {
+    while (_isWakeWordLooping && mounted) {
+      if (!_isScanning) {
+        await _speechService.startContinuousStream((text, isFinal) async {
+          final lower = text.toLowerCase().trim();
+          if (lower.contains("hello rook") || lower.contains("hey rook") || lower.contains("rook")) {
+            AppLogger.i('VISION', 'WAKE WORD HEARD: "$text"');
+            await _speechService.stop();
+
+            if (lower.contains("help") || lower.contains("sos") || lower.contains("emergency")) {
               await _ttsService.speak("Triggering emergency SOS.");
-              await SosService().sendSosSms();
+              await _sosService.sendSosSms();
             } else {
-              await _ttsService.speak("Scanning");
-              await _scanLiveCamera();
+              setState(() => _statusLine = "Wake word heard! Scanning camera...");
+              await _ttsService.speak("Scanning camera now.");
+              await _scanLiveCamera(text);
             }
           }
         });
@@ -86,71 +121,54 @@ class _VisionScreenState extends State<VisionScreen> {
     }
   }
 
-  Future<void> _initCamera() async {
-    final status = await Permission.camera.request();
-    if (!status.isGranted) return;
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
-    _cameraController = CameraController(
-      cameras.first,
-      ResolutionPreset.medium,
-      enableAudio: false,
-    );
-    await _cameraController!.initialize();
-    if (mounted) setState(() => _isCameraInitialized = true);
-  }
+  Future<void> _scanLiveCamera([String? question]) async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized || _isScanning) {
+      return;
+    }
 
-  Future<void> _scanLiveCamera() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    setState(() => _isScanning = true);
+
     try {
-      final image = await _cameraController!.takePicture();
-      final inputImage = InputImage.fromFilePath(image.path);
-      final bundle = await _visionPipeline.processInputImage(inputImage);
-      if (!mounted) return;
+      if (_cameraController!.value.isStreamingImages) {
+        await _cameraController!.stopImageStream();
+      }
 
-      final evidence = bundle.items;
+      final XFile file = await _cameraController!.takePicture();
+      final bytes = await file.readAsBytes();
+      final brightness = _visionPipeline.estimateBrightnessFromBytes(bytes);
+
+      final inputImage = InputImage.fromFilePath(file.path);
+      final bundle = await _visionPipeline.processInputImage(
+        inputImage,
+        estimatedBrightness: brightness,
+      );
+
+      final query = question ?? "What is in front of me?";
+      final rankedItems = _relevanceEngine.rank(query: query, evidence: bundle.items);
+      final result = _zeroAssumptionEngine.verify(query: query, bundle: EvidenceBundle(rankedItems));
+
       setState(() {
-        _activeEvidence = evidence;
+        _lastResult = result;
+        _activeEvidence = rankedItems;
+        _statusLine = "Listening for 'Hey Rook'...";
       });
 
-      final labelNames = evidence.map((e) => e.value).where((c) => c.isNotEmpty).toList();
-      String speechText = "I could not detect any distinct objects.";
-      if (labelNames.isNotEmpty) {
-        if (labelNames.length == 1) {
-          speechText = "I see ${labelNames.first} in front of you.";
-        } else if (labelNames.length == 2) {
-          speechText = "I see ${labelNames[0]} and ${labelNames[1]} in front of you.";
-        } else {
-          final joined = labelNames.sublist(0, labelNames.length - 1).join(", ");
-          speechText = "I see $joined, and ${labelNames.last} in front of you.";
-        }
+      for (final e in rankedItems) {
+        await _sessionStorage.saveEvidence(e);
       }
 
-      final verResult = _zeroAssumptionEngine.verify(
-        query: _lastHeardQuery.isEmpty ? "What is in front of me?" : _lastHeardQuery,
-        bundle: bundle,
-      );
-      if (mounted) {
-        setState(() {
-          _lastResult = verResult;
-          _statusLine = speechText;
-        });
+      // Speak verified answer out loud to blind user
+      await _ttsService.speak(result.message);
+
+      if (result.state == ConfidenceState.verified) {
+        await _hapticService.verified();
+      } else {
+        await _hapticService.uncertain();
       }
-      await _ttsService.speak(speechText);
-      await _hapticService.verified();
     } catch (e) {
-      AppLogger.e('VISION', 'Error scanning live camera: $e');
-    }
-  }
-
-  Future<void> _handleVoiceCommandOnce() async {
-    setState(() => _statusLine = "Listening...");
-    final result = await _speechService.listen();
-    if (result.text.isNotEmpty) {
-      _lastHeardQuery = result.text;
-      await _scanLiveCamera();
-    } else {
-      setState(() => _statusLine = "No speech detected.");
+      AppLogger.e('VISION', 'Scan error: $e');
+    } finally {
+      if (mounted) setState(() => _isScanning = false);
     }
   }
 
@@ -159,57 +177,24 @@ class _VisionScreenState extends State<VisionScreen> {
     _isWakeWordLooping = false;
     _speechService.stop();
     _cameraController?.dispose();
-    _cameraController = null;
     _ocrService.dispose();
     _objectService.dispose();
     _labelService.dispose();
     super.dispose();
   }
 
-  Widget _buildCameraPreview() {
-    if (!_isCameraInitialized || _cameraController == null || !_cameraController!.value.isInitialized) {
-      return Container(
-        height: 280,
-        width: double.infinity,
-        color: AppColors.primaryDark,
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.camera_alt, color: Colors.white, size: 48),
-              SizedBox(height: 8),
-              Text("Initializing Camera...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Center(
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.primary, width: 3),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: AspectRatio(
-          aspectRatio: 3 / 4,
-          child: CameraPreview(_cameraController!),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFD5E3F8),
+      backgroundColor: const Color(0xFFD5E3F8), // Light blue
       appBar: AppBar(
         title: const Text("VISION ASSIST"),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () => AppSettingsDrawer.show(context),
+            onPressed: () {
+              if (mounted) AppSettingsDrawer.show(context);
+            },
             tooltip: "Settings",
           ),
           IconButton(
@@ -223,114 +208,118 @@ class _VisionScreenState extends State<VisionScreen> {
                 _activeEvidence = [];
               });
               messenger.showSnackBar(
-                const SnackBar(content: Text("Session context cleared")),
+                const SnackBar(content: Text("Session memory cleared")),
               );
             },
-            tooltip: "Clear Session",
+            tooltip: "Clear Memory",
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              _buildCameraPreview(),
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      body: Column(
+        children: [
+          // 3:4 Aspect Ratio Camera Box
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Center(
+              child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.primary, width: 3),
                 ),
-                child: Text(
-                  _statusLine,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  minimumSize: const Size(double.infinity, 52),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: _handleVoiceCommandOnce,
-                icon: const Icon(Icons.mic, color: Colors.white, size: 28),
-                label: const Text(
-                  "HOLD TO TALK / ASK ROOK",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (_lastResult != null)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: _lastResult!.state == ConfidenceState.verified
-                        ? AppColors.success
-                        : _lastResult!.state == ConfidenceState.conflict
-                            ? AppColors.danger
-                            : AppColors.warning,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    _lastResult!.message,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              const SizedBox(height: 16),
-              const Text(
-                "EVIDENCE",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 300,
-                child: _activeEvidence.isEmpty
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(20),
-                          child: Text(
-                            "No evidence scanned yet. Run a query or scan.",
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w600,
+                clipBehavior: Clip.antiAlias,
+                child: SizedBox(
+                  height: 260,
+                  child: AspectRatio(
+                    aspectRatio: 3 / 4,
+                    child: _isCameraInitialized && _cameraController != null
+                        ? CameraPreview(_cameraController!)
+                        : Container(
+                            color: AppColors.primaryDark,
+                            child: const Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.camera_alt, color: Colors.white, size: 48),
+                                  SizedBox(height: 8),
+                                  Text("Camera Active", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _activeEvidence.length,
-                        itemBuilder: (context, index) {
-                          final item = _activeEvidence[index];
-                          return EvidenceCard(
-                            evidence: item,
-                            state: _lastResult?.state ?? ConfidenceState.verified,
-                          );
-                        },
-                      ),
+                  ),
+                ),
               ),
-            ],
+            ),
           ),
-        ),
+
+          // Listening Status Banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.primary),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.mic, color: Colors.red),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _statusLine,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // Verification Result Banner
+          if (_lastResult != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              color: _lastResult!.state == ConfidenceState.verified
+                  ? AppColors.success.withAlpha(51)
+                  : _lastResult!.state == ConfidenceState.conflict
+                      ? AppColors.danger.withAlpha(51)
+                      : AppColors.warning.withAlpha(51),
+              child: Text(
+                _lastResult!.message,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+            ),
+
+          // Evidence Feed
+          Expanded(
+            child: _activeEvidence.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24.0),
+                      child: Text(
+                        "Say 'Hello Rook, what is in front of me?' to auto-scan camera and speak answer.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _activeEvidence.length,
+                    itemBuilder: (context, index) {
+                      return EvidenceCard(
+                        evidence: _activeEvidence[index],
+                        state: _lastResult?.state ?? ConfidenceState.verified,
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

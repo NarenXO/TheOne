@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/services/impl/speech_input_service_impl.dart';
 import '../../core/services/impl/tts_service_impl.dart';
@@ -18,46 +19,38 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final SpeechInputServiceImpl _speechService = SpeechInputServiceImpl();
 
   bool _isListening = false;
-  String _statusText = "Starting onboarding...";
-  bool _enableVoiceSequence = true;
+  String _statusText = "Initializing onboarding...";
+  Timer? _sequenceTimer;
 
   @override
   void initState() {
     super.initState();
-    // Disable voice sequence in test environment
-    assert(() {
-      _enableVoiceSequence = false;
-      return true;
-    }());
-    if (_enableVoiceSequence) {
-      Future.delayed(const Duration(milliseconds: 600), _startVoiceOnboardingSequence);
-    }
+    _sequenceTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) _startVoiceSequence();
+    });
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _startVoiceOnboardingSequence() async {
-    if (!_enableVoiceSequence) return;
-    // Wait for Android TTS engine to physically warm up
-    await Future.delayed(const Duration(seconds: 2));
-
+  Future<void> _startVoiceSequence() async {
+    if (!mounted) return;
     setState(() => _statusText = "Listening for your name...");
     await _ttsService.speak("Welcome to TheOne. Please say your name.");
 
-    // Activate mic immediately after speech completes
+    // Listen for Name
+    if (!mounted) return;
     setState(() => _isListening = true);
     final nameResult = await _speechService.listen();
     if (!mounted) return;
     setState(() => _isListening = false);
 
     String userName = nameResult.text.trim();
-    if (userName.isNotEmpty) _nameController.text = userName;
-    userName = _nameController.text.isEmpty ? "Naren" : _nameController.text;
+    if (userName.isNotEmpty) {
+      _nameController.text = userName;
+    } else {
+      userName = _nameController.text.isEmpty ? "Naren" : _nameController.text;
+    }
 
+    // Ask for Mode
+    if (!mounted) return;
     setState(() => _statusText = "Say Vision, Hearing, or Talk");
     await _ttsService.speak("Hello $userName. Please say your assist mode: Vision, Hearing, or Talk.");
 
@@ -68,20 +61,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     setState(() => _isListening = false);
 
     final modeText = modeResult.text.toLowerCase();
-    if (modeText.contains('vision') || modeText.contains('see')) {
+    if (modeText.contains('vision') || modeText.contains('see') || modeText.contains('eye')) {
       _manualSelect('vision', 'Vision Assist', userName);
-    } else if (modeText.contains('hearing') || modeText.contains('deaf')) {
+    } else if (modeText.contains('hearing') || modeText.contains('deaf') || modeText.contains('ear')) {
       _manualSelect('hearing', 'Hearing Assist', userName);
-    } else if (modeText.contains('talk') || modeText.contains('speech') || modeText.contains('mute')) {
+    } else if (modeText.contains('talk') || modeText.contains('speak') || modeText.contains('communication') || modeText.contains('mute')) {
       _manualSelect('communication', 'Communication Assist', userName);
     } else {
-      await _ttsService.speak("I didn't catch that. Please tap an option on the screen.");
+      if (!mounted) return;
+      setState(() => _statusText = "Please tap an option below or say Vision, Hearing, or Talk");
+      await _ttsService.speak("I did not catch that. Please tap one of the buttons on screen.");
     }
   }
 
-  void _manualSelect(String modeKey, String modeTitle, [String? overrideName]) async {
-    _enableVoiceSequence = false;
-    final name = overrideName ?? (_nameController.text.trim().isEmpty ? "Naren" : _nameController.text.trim());
+  void _manualSelect(String modeKey, String modeTitle, [String? nameOverride]) async {
+    final name = nameOverride ?? (_nameController.text.trim().isEmpty ? "Naren" : _nameController.text.trim());
     await PreferencesService.completeOnboarding(name, modeKey);
     await _ttsService.speak("Opening $modeTitle.");
 
@@ -92,9 +86,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   @override
+  void dispose() {
+    _sequenceTimer?.cancel();
+    _speechService.stop();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFD5E3F8),
+      backgroundColor: const Color(0xFFD5E3F8), // Light blue
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
