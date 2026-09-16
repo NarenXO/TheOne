@@ -95,6 +95,10 @@ class _HearingScreenState extends State<HearingScreen> {
 
   Future<void> _startContinuousListening() async {
     if (_isListening) return;
+    await _speechService.stop();
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    if (!mounted) return;
     setState(() {
       _isListening = true;
       _activePartialText = "";

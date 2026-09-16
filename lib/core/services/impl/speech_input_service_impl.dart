@@ -18,12 +18,19 @@ class SpeechInputServiceImpl implements SpeechInputService {
         _initialized = await _speech.initialize(
           onError: (e) {
             AppLogger.e('STT', 'Native Error: ${e.errorMsg}');
+            _isBusy = false;
           },
-          onStatus: (s) => AppLogger.i('STT', 'Status: $s'),
+          onStatus: (s) {
+            AppLogger.i('STT', 'Status: $s');
+            if (s == 'done' || s == 'notListening') {
+              _isBusy = false;
+            }
+          },
         );
       } catch (e) {
         AppLogger.e('STT', 'Init exception: $e');
         _initialized = false;
+        _isBusy = false;
       }
     }
     return _initialized;
@@ -35,6 +42,7 @@ class SpeechInputServiceImpl implements SpeechInputService {
     } catch (_) {}
     _speech = stt.SpeechToText();
     _initialized = false;
+    _isBusy = false;
     await Future.delayed(const Duration(milliseconds: 600));
     await init();
   }
@@ -74,6 +82,7 @@ class SpeechInputServiceImpl implements SpeechInputService {
           latest = res.recognizedWords.trim();
           if (res.hasConfidenceRating && res.confidence > 0) conf = res.confidence;
           if (res.finalResult && !completer.isCompleted) {
+            _isBusy = false;
             completer.complete(SpeechResult(text: latest, confidence: conf, languageCode: 'en_IN'));
           }
         },
@@ -91,6 +100,7 @@ class SpeechInputServiceImpl implements SpeechInputService {
     final result = await completer.future.timeout(
       const Duration(seconds: 9),
       onTimeout: () {
+        _isBusy = false;
         return SpeechResult(text: latest, confidence: latest.isEmpty ? 0.0 : conf, languageCode: 'en_IN');
       },
     );
@@ -116,10 +126,12 @@ class SpeechInputServiceImpl implements SpeechInputService {
     final ok = await init();
     if (!ok) return;
 
-    if (_speech.isListening) {
-      await _speech.stop();
-      await Future.delayed(const Duration(milliseconds: 300));
-    }
+    try {
+      if (_speech.isListening) {
+        await _speech.stop();
+      }
+    } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 200));
 
     try {
       await _speech.listen(

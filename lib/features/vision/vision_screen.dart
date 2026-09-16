@@ -194,6 +194,7 @@ class _VisionScreenState extends State<VisionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFFD5E3F8), // Light blue
       appBar: AppBar(
         title: const Text("VISION ASSIST"),
@@ -223,152 +224,152 @@ class _VisionScreenState extends State<VisionScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // 3:4 Aspect Ratio Camera Box
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Center(
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.primary, width: 3),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: SizedBox(
-                  height: 240,
-                  child: AspectRatio(
-                    aspectRatio: 3 / 4,
-                    child: _isCameraInitialized && _cameraController != null
-                        ? CameraPreview(_cameraController!)
-                        : Container(
-                            color: AppColors.primaryDark,
-                            child: const Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.camera_alt, color: Colors.white, size: 48),
-                                  SizedBox(height: 8),
-                                  Text("Camera Active", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                ],
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // 3:4 Aspect Ratio Camera Box
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Center(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.primary, width: 3),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: SizedBox(
+                    height: 240,
+                    child: AspectRatio(
+                      aspectRatio: 3 / 4,
+                      child: _isCameraInitialized && _cameraController != null
+                          ? CameraPreview(_cameraController!)
+                          : Container(
+                              color: AppColors.primaryDark,
+                              child: const Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.camera_alt, color: Colors.white, size: 48),
+                                    SizedBox(height: 8),
+                                    Text("Camera Active", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
 
-          // Listening Status Banner
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.primary),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, color: AppColors.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _statusLine,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primary),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          // Query Input Box with Mic & Send buttons
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Container(
+            // Listening Status Banner
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary, width: 2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.primary),
               ),
               child: Row(
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.mic, color: AppColors.primary, size: 28),
-                    onPressed: _askRookVoice,
-                    tooltip: "Speak Question",
-                  ),
+                  const Icon(Icons.info_outline, color: AppColors.primary),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: TextField(
-                      controller: _queryController,
-                      decoration: const InputDecoration(
-                        hintText: "Ask what camera sees...",
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                      ),
-                      onSubmitted: (val) => _scanLiveCamera(val),
+                    child: Text(
+                      _statusLine,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.primary),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.search, color: AppColors.primary, size: 28),
-                    onPressed: () => _scanLiveCamera(_queryController.text),
-                    tooltip: "Scan Question",
                   ),
                 ],
               ),
             ),
-          ),
 
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
 
-          // Action Button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () => _scanLiveCamera(_queryController.text),
-              icon: const Icon(Icons.camera_alt, color: Colors.white, size: 24),
-              label: const Text(
-                "SCAN CAMERA & ANALYZE",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          // Verification Result Banner
-          if (_lastResult != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: _lastResult!.state == ConfidenceState.verified
-                    ? AppColors.success.withValues(alpha: 0.2)
-                    : _lastResult!.state == ConfidenceState.conflict
-                        ? AppColors.danger.withValues(alpha: 0.2)
-                        : AppColors.warning.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                _lastResult!.message,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
+            // Query Input Box with Mic & Send buttons
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary, width: 2),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.mic, color: AppColors.primary, size: 28),
+                      onPressed: _askRookVoice,
+                      tooltip: "Speak Question",
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _queryController,
+                        decoration: const InputDecoration(
+                          hintText: "Ask what camera sees...",
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        ),
+                        onSubmitted: (val) => _scanLiveCamera(val),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.search, color: AppColors.primary, size: 28),
+                      onPressed: () => _scanLiveCamera(_queryController.text),
+                      tooltip: "Scan Question",
+                    ),
+                  ],
+                ),
               ),
             ),
 
-          // Evidence Feed
-          Expanded(
-            child: _activeEvidence.isEmpty
+            const SizedBox(height: 10),
+
+            // Action Button
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () => _scanLiveCamera(_queryController.text),
+                icon: const Icon(Icons.camera_alt, color: Colors.white, size: 24),
+                label: const Text(
+                  "SCAN CAMERA & ANALYZE",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Verification Result Banner
+            if (_lastResult != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: _lastResult!.state == ConfidenceState.verified
+                      ? AppColors.success.withValues(alpha: 0.2)
+                      : _lastResult!.state == ConfidenceState.conflict
+                          ? AppColors.danger.withValues(alpha: 0.2)
+                          : AppColors.warning.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _lastResult!.message,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+
+            // Evidence Feed
+            _activeEvidence.isEmpty
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24.0),
@@ -380,6 +381,8 @@ class _VisionScreenState extends State<VisionScreen> {
                     ),
                   )
                 : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: _activeEvidence.length,
                     itemBuilder: (context, index) {
                       return EvidenceCard(
@@ -388,8 +391,8 @@ class _VisionScreenState extends State<VisionScreen> {
                       );
                     },
                   ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
