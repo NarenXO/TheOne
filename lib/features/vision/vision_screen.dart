@@ -10,7 +10,6 @@ import '../../core/evidence/relevance_engine.dart';
 import '../../core/evidence/zero_assumption_engine.dart';
 import '../../core/evidence/verification_result.dart';
 import '../../core/models/confidence_state.dart';
-import '../../core/safety/sos_service.dart';
 import '../../core/services/impl/haptic_service_impl.dart';
 import '../../core/services/impl/image_labeling_service.dart';
 import '../../core/services/impl/ocr_service_impl.dart';
@@ -35,13 +34,14 @@ class _VisionScreenState extends State<VisionScreen> {
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
 
+  final TextEditingController _queryController = TextEditingController(text: "What is in front of me?");
+
   final _ocrService = OcrServiceImpl();
   final _objectService = ObjectDetectionServiceImpl();
   final _labelService = ImageLabelingService();
   final _ttsService = TtsServiceImpl();
   final _hapticService = HapticServiceImpl();
   final _speechService = SpeechInputServiceImpl();
-  final _sosService = SosService();
   final _zeroAssumptionEngine = ZeroAssumptionEngine();
   final _relevanceEngine = RelevanceEngine();
   final _sessionStorage = SessionStorage();
@@ -50,9 +50,8 @@ class _VisionScreenState extends State<VisionScreen> {
 
   VerificationResult? _lastResult;
   List<Evidence> _activeEvidence = [];
-  String _statusLine = "🟢 Listening for 'Hey Rook' or tap Ask Rook...";
+  String _statusLine = "Ready. Tap Mic or type a question to scan.";
   bool _isScanning = false;
-  bool _isWakeWordLooping = false;
 
   @override
   void initState() {
@@ -62,10 +61,10 @@ class _VisionScreenState extends State<VisionScreen> {
       objectService: _objectService,
       labelService: _labelService,
     );
-    _initCameraAndWakeWord();
+    _initCamera();
   }
 
-  Future<void> _initCameraAndWakeWord() async {
+  Future<void> _initCamera() async {
     if (!mounted) return;
     await Permission.camera.request();
     await Permission.microphone.request();
@@ -97,35 +96,6 @@ class _VisionScreenState extends State<VisionScreen> {
       AppLogger.e('VISION', 'Camera init error: $e');
       if (mounted) setState(() => _isCameraInitialized = false);
     }
-
-    _startWakeWordLoop();
-  }
-
-  void _startWakeWordLoop() async {
-    if (_isWakeWordLooping) return;
-    _isWakeWordLooping = true;
-
-    while (_isWakeWordLooping && mounted) {
-      if (!_isScanning) {
-        await _speechService.startContinuousStream((text, isFinal) async {
-          final lower = text.toLowerCase().trim();
-          if (lower.contains("hello rook") || lower.contains("hey rook") || lower.contains("rook")) {
-            AppLogger.i('VISION', 'WAKE WORD HEARD: "$text"');
-            await _speechService.stop();
-
-            if (lower.contains("help") || lower.contains("sos") || lower.contains("emergency")) {
-              await _ttsService.speak("Triggering emergency SOS.");
-              await _sosService.sendSosSms();
-            } else {
-              setState(() => _statusLine = "Wake word heard! Scanning camera...");
-              await _ttsService.speak("Scanning camera now.");
-              await _scanLiveCamera(text);
-            }
-          }
-        });
-      }
-      await Future.delayed(const Duration(seconds: 3));
-    }
   }
 
   Future<void> _askRookVoice() async {
@@ -136,11 +106,12 @@ class _VisionScreenState extends State<VisionScreen> {
     final question = speechResult.text.trim();
 
     if (question.isEmpty) {
-      setState(() => _statusLine = "🟢 No voice heard. Tap Ask Rook and speak clearly.");
-      await _ttsService.speak("I did not hear a question. Please tap Ask Rook and speak clearly.");
+      setState(() => _statusLine = "No speech heard. Type a question or tap Mic to retry.");
+      await _ttsService.speak("I did not hear a question. Please try again.");
       return;
     }
 
+    _queryController.text = question;
     setState(() => _statusLine = 'Heard: "$question" — 📷 Scanning camera...');
     await _scanLiveCamera(question);
   }
@@ -170,21 +141,24 @@ class _VisionScreenState extends State<VisionScreen> {
         estimatedBrightness: brightness,
       );
 
-      final query = (question != null && question.isNotEmpty) ? question : "What is in front of me?";
-      final rankedItems = _relevanceEngine.rank(query: query, evidence: bundle.items);
-      final result = _zeroAssumptionEngine.verify(query: query, bundle: EvidenceBundle(rankedItems));
+      final queryText = (question != null && question.isNotEmpty)
+          ? question
+          : (_queryController.text.trim().isEmpty ? "What is in front of me?" : _queryController.text.trim());
+
+      final rankedItems = _relevanceEngine.rank(query: queryText, evidence: bundle.items);
+      final result = _zeroAssumptionEngine.verify(query: queryText, bundle: EvidenceBundle(rankedItems));
 
       setState(() {
         _lastResult = result;
         _activeEvidence = rankedItems;
-        _statusLine = "🔊 Rook Speaking...";
+        _statusLine = "🔊 Speaking response...";
       });
 
       for (final e in rankedItems) {
         await _sessionStorage.saveEvidence(e);
       }
 
-      // ALWAYS Speak verified answer out loud via TTS
+      // Speak answer out loud via TTS
       await _ttsService.speak(result.message);
 
       if (result.state == ConfidenceState.verified) {
@@ -194,13 +168,13 @@ class _VisionScreenState extends State<VisionScreen> {
       }
     } catch (e) {
       AppLogger.e('VISION', 'Scan error: $e');
-      setState(() => _statusLine = "Scan error: $e. Tap Ask Rook to retry.");
+      setState(() => _statusLine = "Scan error. Tap button or Mic to retry.");
       await _ttsService.speak("Camera scan encountered an error. Please try again.");
     } finally {
       if (mounted) {
         setState(() {
           _isScanning = false;
-          _statusLine = "🟢 Listening for 'Hey Rook' or tap Ask Rook...";
+          _statusLine = "Ready. Tap Mic or type a question to scan.";
         });
       }
     }
@@ -208,7 +182,7 @@ class _VisionScreenState extends State<VisionScreen> {
 
   @override
   void dispose() {
-    _isWakeWordLooping = false;
+    _queryController.dispose();
     _speechService.stop();
     _cameraController?.dispose();
     _ocrService.dispose();
@@ -298,7 +272,7 @@ class _VisionScreenState extends State<VisionScreen> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.mic, color: Colors.red),
+                const Icon(Icons.info_outline, color: AppColors.primary),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -312,19 +286,58 @@ class _VisionScreenState extends State<VisionScreen> {
 
           const SizedBox(height: 10),
 
-          // Primary Voice Button
+          // Query Input Box with Mic & Send buttons
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary, width: 2),
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.mic, color: AppColors.primary, size: 28),
+                    onPressed: _askRookVoice,
+                    tooltip: "Speak Question",
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _queryController,
+                      decoration: const InputDecoration(
+                        hintText: "Ask what camera sees...",
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                      ),
+                      onSubmitted: (val) => _scanLiveCamera(val),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.search, color: AppColors.primary, size: 28),
+                    onPressed: () => _scanLiveCamera(_queryController.text),
+                    tooltip: "Scan Question",
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // Action Button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                minimumSize: const Size(double.infinity, 52),
+                minimumSize: const Size(double.infinity, 48),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: _askRookVoice,
-              icon: const Icon(Icons.mic, color: Colors.white, size: 28),
+              onPressed: () => _scanLiveCamera(_queryController.text),
+              icon: const Icon(Icons.camera_alt, color: Colors.white, size: 24),
               label: const Text(
-                "ASK ROOK / TAP TO SPEAK",
+                "SCAN CAMERA & ANALYZE",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),
@@ -360,7 +373,7 @@ class _VisionScreenState extends State<VisionScreen> {
                     child: Padding(
                       padding: EdgeInsets.all(24.0),
                       child: Text(
-                        "Say 'Hello Rook, what is in front of me?' or tap Ask Rook to scan camera.",
+                        "Tap Mic or type a question to analyze camera image.",
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
                       ),
